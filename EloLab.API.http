@@ -1,0 +1,6 @@
+@EloLab.API_HostAddress = http://localhost:5036
+
+GET {{EloLab.API_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
