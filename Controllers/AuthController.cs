@@ -1,5 +1,7 @@
+using EloLab.API.Data;
 using EloLab.API.DTOs;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore; // Necessário para conversar com o Banco
 
 namespace EloLab.API.Controllers;
 
@@ -8,10 +10,13 @@ namespace EloLab.API.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly Supabase.Client _supabaseClient;
+    private readonly AppDbContext _context; // <--- NOVIDADE 1: O acesso ao Banco
 
-    public AuthController(Supabase.Client supabaseClient)
+    // NOVIDADE 2: Adicionamos o 'AppDbContext context' aqui para poder usar o banco
+    public AuthController(Supabase.Client supabaseClient, AppDbContext context)
     {
         _supabaseClient = supabaseClient;
+        _context = context;
     }
 
     [HttpPost("login")]
@@ -19,10 +24,8 @@ public class AuthController : ControllerBase
     {
         try
         {
-            // O Supabase verifica o email e senha
             var session = await _supabaseClient.Auth.SignIn(request.Email, request.Password);
 
-            // Se der certo, devolvemos o Token de Acesso (o nosso "crachá")
             return Ok(new 
             { 
                 token = session.AccessToken,
@@ -36,20 +39,59 @@ public class AuthController : ControllerBase
         }
     }
     
+    // NOVIDADE 3: O método agora é 'async Task' e procura no banco
     [HttpGet("me")]
-    [Microsoft.AspNetCore.Authorization.Authorize] // Só funciona se tiver Token
-    public IActionResult GetMe()
+    [Microsoft.AspNetCore.Authorization.Authorize] 
+    public async Task<IActionResult> GetMe()
     {
-        // 1. Pega o ID do usuário de dentro do Token (O "crachá")
+        // 1. Pegamos o ID do token
         var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        // O Supabase as vezes manda o ID num campo chamado 'sub'
+        if (string.IsNullOrEmpty(userId))
+            userId = User.FindFirst("sub")?.Value;
 
         if (string.IsNullOrEmpty(userId))
             return Unauthorized();
 
-        return Ok(new { 
-            Mensagem = "Você está autenticado!", 
-            SeuId = userId,
-            // Aqui futuramente vamos devolver: "Tipo: Laboratorio" ou "Tipo: Clinica"
+        // Convertemos o ID de string para Guid para poder pesquisar
+        if (!Guid.TryParse(userId, out var usuarioGuid))
+            return BadRequest("ID de usuário inválido.");
+
+        // 2. Vamos ao banco ver se existe um Laboratório com este dono
+        var laboratorio = await _context.Laboratorios
+            .FirstOrDefaultAsync(l => l.UsuarioId == usuarioGuid);
+
+        if (laboratorio != null)
+        {
+            return Ok(new 
+            { 
+                Tipo = "Laboratorio", 
+                MeusDados = laboratorio,
+                SeuId = userId
+            });
+        }
+
+        // 3. Vamos ao banco ver se existe uma Clínica com este dono
+        var clinica = await _context.Clinicas
+            .FirstOrDefaultAsync(c => c.UsuarioId == usuarioGuid);
+
+        if (clinica != null)
+        {
+            return Ok(new 
+            { 
+                Tipo = "Clinica", 
+                MeusDados = clinica,
+                SeuId = userId
+            });
+        }
+
+        // 4. Se não achou nada (usuário novo que ainda não tem perfil)
+        return Ok(new 
+        { 
+            Tipo = "Desconhecido", 
+            Mensagem = "Você está logado, mas não tem Laboratório nem Clínica vinculados.",
+            SeuId = userId
         });
     }
 }
