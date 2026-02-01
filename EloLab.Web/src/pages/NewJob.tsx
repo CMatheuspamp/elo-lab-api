@@ -11,7 +11,9 @@ export function NewJob() {
 
     // Listas para os Dropdowns
     const [listaServicos, setListaServicos] = useState<Servico[]>([]);
-    const [listaClinicas, setListaClinicas] = useState<any[]>([]); // <--- Adicionado
+
+    // Lista Genérica: Pode ser lista de Clínicas (se sou Lab) ou Laboratórios (se sou Clínica)
+    const [listaParceiros, setListaParceiros] = useState<any[]>([]);
 
     // Estados do Formulário
     const [paciente, setPaciente] = useState('');
@@ -19,27 +21,43 @@ export function NewJob() {
     const [cor, setCor] = useState('');
     const [dataEntrega, setDataEntrega] = useState('');
     const [obs, setObs] = useState('');
-    const [clinicaId, setClinicaId] = useState('');
+
+    // ID do Parceiro selecionado no Dropdown (Pode ser Lab ou Clinica)
+    const [parceiroSelecionadoId, setParceiroSelecionadoId] = useState('');
 
     const [servicoId, setServicoId] = useState('');
     const [valor, setValor] = useState('');
 
     useEffect(() => {
-        // 1. Pega dados do usuário
-        api.get('/Auth/me').then(res => setUser(res.data));
-
-        // 2. Pega lista de serviços
-        api.get('/Servicos')
-            .then(res => setListaServicos(res.data))
-            .catch(() => console.log('Sem serviços cadastrados'));
-
-        // 3. Pega lista de clínicas (NOVO)
-        api.get('/Clinicas')
-            .then(res => setListaClinicas(res.data))
-            .catch(() => console.log('Erro ao buscar clínicas'));
+        carregarDadosIniciais();
     }, []);
 
-    // Quando escolhe um serviço, atualiza o preço automaticamente
+    async function carregarDadosIniciais() {
+        try {
+            // 1. Pega dados do usuário
+            const resUser = await api.get('/Auth/me');
+            const usuarioLogado = resUser.data;
+            setUser(usuarioLogado);
+
+            // 2. Pega lista de serviços
+            api.get('/Servicos').then(res => setListaServicos(res.data)).catch(() => console.log('Sem serviços'));
+
+            // 3. Lógica Inteligente para carregar Parceiros
+            if (usuarioLogado.tipo === 'Laboratorio') {
+                // Se sou Lab, carrego as Clínicas para escolher meu cliente
+                const res = await api.get('/Clinicas');
+                setListaParceiros(res.data);
+            } else {
+                // Se sou Clínica, carrego os Laboratórios para escolher meu fornecedor
+                const res = await api.get('/Laboratorios');
+                setListaParceiros(res.data);
+            }
+
+        } catch (error) {
+            console.error("Erro ao carregar dados", error);
+        }
+    }
+
     function handleServicoChange(e: React.ChangeEvent<HTMLSelectElement>) {
         const novoId = e.target.value;
         setServicoId(novoId);
@@ -57,16 +75,21 @@ export function NewJob() {
         setLoading(true);
 
         try {
+            // Lógica de IDs invertida dependendo de quem está logado
             const payload = {
-                laboratorioId: user.meusDados.id,
-                clinicaId: clinicaId,
+                // Se sou Lab, o ID do lab sou eu. Se sou Clínica, o lab é quem eu selecionei.
+                laboratorioId: user.tipo === 'Laboratorio' ? user.meusDados.id : parceiroSelecionadoId,
+
+                // Se sou Lab, a clínica é quem eu selecionei. Se sou Clínica, a clínica sou eu.
+                clinicaId: user.tipo === 'Laboratorio' ? parceiroSelecionadoId : user.meusDados.id,
+
                 servicoId: servicoId || null,
                 pacienteNome: paciente,
                 dentes: dentes,
                 corDente: cor,
                 dataEntrega: new Date(dataEntrega).toISOString(),
                 valorPersonalizado: valor ? parseFloat(valor) : null,
-                observacoes: obs
+                descricaoPersonalizada: obs
             };
 
             await api.post('/Trabalhos', payload);
@@ -80,6 +103,11 @@ export function NewJob() {
             setLoading(false);
         }
     }
+
+    // Variáveis auxiliares para o Texto da tela
+    const isLab = user?.tipo === 'Laboratorio';
+    const labelParceiro = isLab ? "Clínica Parceira" : "Laboratório Parceiro";
+    const placeholderParceiro = isLab ? "Selecione a Clínica..." : "Selecione o Laboratório...";
 
     return (
         <div className="min-h-screen bg-slate-50 p-6">
@@ -164,20 +192,20 @@ export function NewJob() {
                             </h3>
                             <div className="grid grid-cols-1 gap-4">
 
-                                {/* DROPDOWN DE CLÍNICAS (Substituiu o Input de texto) */}
+                                {/* DROPDOWN INTELIGENTE (Clinica ou Lab) */}
                                 <div>
-                                    <label className="mb-1 block text-xs font-semibold text-blue-800">Clínica Parceira</label>
+                                    <label className="mb-1 block text-xs font-semibold text-blue-800">{labelParceiro}</label>
                                     <div className="relative">
                                         <select
                                             required
-                                            value={clinicaId}
-                                            onChange={e => setClinicaId(e.target.value)}
+                                            value={parceiroSelecionadoId}
+                                            onChange={e => setParceiroSelecionadoId(e.target.value)}
                                             className="w-full appearance-none rounded border border-blue-200 bg-white py-2 pl-3 pr-8 text-sm outline-none focus:border-blue-500"
                                         >
-                                            <option value="">Selecione a Clínica...</option>
-                                            {listaClinicas.map((clinica: any) => (
-                                                <option key={clinica.id} value={clinica.id}>
-                                                    {clinica.nome}
+                                            <option value="">{placeholderParceiro}</option>
+                                            {listaParceiros.map((parceiro: any) => (
+                                                <option key={parceiro.id} value={parceiro.id}>
+                                                    {parceiro.nome}
                                                 </option>
                                             ))}
                                         </select>
