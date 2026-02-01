@@ -2,9 +2,11 @@ using EloLab.API.Data;
 using EloLab.API.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 
 namespace EloLab.API.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")] // A rota será: http://localhost:5036/api/laboratorios
 public class LaboratoriosController : ControllerBase
