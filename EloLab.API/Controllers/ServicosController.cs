@@ -54,22 +54,28 @@ public class ServicosController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CriarServico([FromBody] CriarServicoRequest request)
     {
-        if (request.PrecoBase < 0)
-            return BadRequest("O preço não pode ser negativo.");
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId)) userId = User.FindFirst("sub")?.Value;
+
+        var usuarioGuid = Guid.Parse(userId!);
+        var lab = await _context.Laboratorios.FirstOrDefaultAsync(l => l.UsuarioId == usuarioGuid);
+
+        if (lab == null) return Unauthorized("Apenas laboratórios podem criar serviços.");
 
         var novoServico = new Servico
         {
-            LaboratorioId = request.LaboratorioId,
+            LaboratorioId = lab.Id, // Forçamos o ID do lab logado
             Nome = request.Nome,
             Descricao = request.Descricao,
             PrecoBase = request.PrecoBase,
-            PrazoDiasUteis = request.PrazoDiasUteis
+            PrazoDiasUteis = request.PrazoDiasUteis,
+            Ativo = true
         };
 
         _context.Servicos.Add(novoServico);
         await _context.SaveChangesAsync();
 
-        return CreatedAtAction(nameof(GetServicosPorLaboratorio), new { labId = request.LaboratorioId }, novoServico);
+        return Ok(novoServico);
     }
 
     // 2. Listar o menu de um laboratório específico (Público ou para Clínicas)

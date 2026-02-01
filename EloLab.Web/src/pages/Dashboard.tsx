@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Building2, Calendar, Search, Plus } from 'lucide-react';
+import { LogOut, Building2, Calendar, Search, Plus, Tag } from 'lucide-react'; // Adicionado Tag aqui
 import type { UserSession, Trabalho } from '../types';
 
 export function Dashboard() {
@@ -10,17 +10,14 @@ export function Dashboard() {
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
 
-    // Função auxiliar para formatar datas (Ex: 10/02/2026)
     const formatDate = (dateString: string) => {
         return new Date(dateString).toLocaleDateString('pt-BR');
     };
 
-    // Função auxiliar para formatar dinheiro (Ex: € 150,00)
     const formatCurrency = (value: number) => {
         return new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
     };
 
-    // Função para definir a cor da etiqueta de status
     const getStatusColor = (status: string) => {
         switch (status) {
             case 'Pendente': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
@@ -33,11 +30,9 @@ export function Dashboard() {
     useEffect(() => {
         async function loadData() {
             try {
-                // 1. Busca dados do usuário
                 const meResponse = await api.get('/Auth/me');
                 setUser(meResponse.data);
 
-                // 2. Busca lista de trabalhos
                 const trabalhosResponse = await api.get('/Trabalhos');
                 setTrabalhos(trabalhosResponse.data);
 
@@ -71,6 +66,16 @@ export function Dashboard() {
                     </div>
 
                     <div className="flex items-center gap-6">
+                        {/* BOTÃO TABELA DE PREÇOS ADICIONADO AQUI */}
+                        {user.tipo === 'Laboratorio' && (
+                            <button
+                                onClick={() => navigate('/servicos')}
+                                className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+                            >
+                                <Tag className="h-3.5 w-3.5" /> Tabela de Preços
+                            </button>
+                        )}
+
                         <div className="text-right">
                             <p className="text-sm font-semibold text-slate-900">{user.meusDados.nome}</p>
                             <p className="text-xs text-slate-500">{user.tipo}</p>
@@ -82,10 +87,7 @@ export function Dashboard() {
                 </div>
             </header>
 
-            {/* Conteúdo */}
             <main className="mx-auto mt-8 max-w-6xl px-6">
-
-                {/* Barra de Ações */}
                 <div className="mb-6 flex items-center justify-between">
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900">Trabalhos</h1>
@@ -98,9 +100,7 @@ export function Dashboard() {
                     </button>
                 </div>
 
-                {/* Tabela de Trabalhos */}
                 <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-                    {/* Filtros rápidos (Fake por enquanto) */}
                     <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-3">
                         <div className="relative max-w-sm">
                             <Search className="absolute top-2.5 left-3 h-4 w-4 text-slate-400" />
@@ -137,7 +137,6 @@ export function Dashboard() {
                                         <span className="block text-xs font-normal text-slate-400">ID: {trabalho.id.substring(0, 8)}...</span>
                                     </td>
 
-                                    {/* MUDANÇA AQUI: Exibição mais bonita do Serviço + Dentes + Cor */}
                                     <td className="px-6 py-4">
                                         <div className="font-bold text-slate-700">
                                             {trabalho.servico?.nome || 'Serviço Personalizado'}
@@ -155,7 +154,6 @@ export function Dashboard() {
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-2">
                                             <Building2 className="h-4 w-4 text-slate-400" />
-                                            {/* Se sou Lab, mostro a Clínica. Se sou Clínica, mostro o Lab */}
                                             {user.tipo === 'Laboratorio' ? trabalho.clinica?.nome : trabalho.laboratorio?.nome}
                                         </div>
                                     </td>

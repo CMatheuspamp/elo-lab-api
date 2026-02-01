@@ -15,6 +15,8 @@ export interface Servico {
     id: string;
     nome: string;
     precoBase: number;
+    prazoDiasUteis?: number;
+    descricao?: string;
 }
 
 export interface Trabalho {
