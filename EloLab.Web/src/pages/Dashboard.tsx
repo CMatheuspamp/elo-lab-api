@@ -92,7 +92,7 @@ export function Dashboard() {
                         <p className="text-slate-500">Gerencie seus pedidos e produções</p>
                     </div>
                     <button
-                        onClick={() => navigate('/trabalhos/novo')}    
+                        onClick={() => navigate('/trabalhos/novo')}
                         className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 shadow-sm transition">
                         <Plus className="h-4 w-4" /> Novo Pedido
                     </button>
@@ -136,10 +136,22 @@ export function Dashboard() {
                                         {trabalho.pacienteNome}
                                         <span className="block text-xs font-normal text-slate-400">ID: {trabalho.id.substring(0, 8)}...</span>
                                     </td>
+
+                                    {/* MUDANÇA AQUI: Exibição mais bonita do Serviço + Dentes + Cor */}
                                     <td className="px-6 py-4">
-                                        {trabalho.dentes ? `Dentes: ${trabalho.dentes}` : 'Sem dentes espec.'}
-                                        {trabalho.corDente && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">{trabalho.corDente}</span>}
+                                        <div className="font-bold text-slate-700">
+                                            {trabalho.servico?.nome || 'Serviço Personalizado'}
+                                        </div>
+                                        <div className="mt-0.5 text-xs text-slate-500">
+                                            {trabalho.dentes ? `Dentes: ${trabalho.dentes}` : 'Sem dentes espec.'}
+                                            {trabalho.corDente && (
+                                                <span className="ml-2 rounded bg-slate-100 border border-slate-200 px-1.5 py-0.5 font-medium text-slate-600">
+                                                    Cor: {trabalho.corDente}
+                                                </span>
+                                            )}
+                                        </div>
                                     </td>
+
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-2">
                                             <Building2 className="h-4 w-4 text-slate-400" />

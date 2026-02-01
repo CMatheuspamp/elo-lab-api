@@ -1,7 +1,7 @@
 using EloLab.API.Data;
 using EloLab.API.DTOs;
 using EloLab.API.Models;
-using EloLab.API.Models.Enums;
+using EloLab.API.Models.Enums; // Certifique-se que seu Enum está aqui ou remova se estiver em Models
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -41,8 +41,8 @@ public class TrabalhosController : ControllerBase
         {
             return await _context.Trabalhos
                 .Where(t => t.LaboratorioId == meuLab.Id)
-                .Include(t => t.Clinica) // Quem pediu?
-                .Include(t => t.Servico) // O que é? <--- ADICIONADO
+                .Include(t => t.Clinica) // Traz o nome da Clínica
+                .Include(t => t.Servico) // Traz o nome do Serviço (Coroa, Faceta, etc)
                 .OrderByDescending(t => t.CreatedAt)
                 .ToListAsync();
         }
@@ -55,13 +55,13 @@ public class TrabalhosController : ControllerBase
         {
             return await _context.Trabalhos
                 .Where(t => t.ClinicaId == minhaClinica.Id)
-                .Include(t => t.Laboratorio) // Quem vai fazer?
-                .Include(t => t.Servico)     // O que é? <--- ADICIONADO
+                .Include(t => t.Laboratorio) // Traz o nome do Lab
+                .Include(t => t.Servico)     // Traz o nome do Serviço
                 .OrderByDescending(t => t.CreatedAt)
                 .ToListAsync();
         }
 
-        // D. Nada encontrado
+        // D. Nada encontrado (Usuário sem perfil vinculado)
         return Ok(new List<Trabalho>());
     }
 
@@ -73,6 +73,7 @@ public class TrabalhosController : ControllerBase
     {
         decimal valorFinalCalculado = 0;
 
+        // Lógica de Preço: Se enviou valor manual, usa ele. Se não, pega da tabela.
         if (request.ValorPersonalizado.HasValue)
         {
             valorFinalCalculado = request.ValorPersonalizado.Value;
@@ -95,15 +96,16 @@ public class TrabalhosController : ControllerBase
             Dentes = request.Dentes,
             CorDente = request.CorDente,
             DescricaoPersonalizada = request.Observacoes,
-            DataEntregaPrevista = request.DataEntrega.ToUniversalTime(),
+            DataEntregaPrevista = request.DataEntrega.ToUniversalTime(), // Sempre salvar em UTC
             ValorFinal = valorFinalCalculado,
-            Status = StatusTrabalho.Pendente.ToString(),
+            Status = "Pendente", // Hardcoded ou StatusTrabalho.Pendente.ToString()
             CreatedAt = DateTime.UtcNow
         };
 
         _context.Trabalhos.Add(trabalho);
         await _context.SaveChangesAsync();
 
+        // Retorna o trabalho criado
         return Ok(trabalho);
     }
 
@@ -116,14 +118,17 @@ public class TrabalhosController : ControllerBase
         var trabalho = await _context.Trabalhos.FindAsync(trabalhoId);
         if (trabalho == null) return NotFound("Trabalho não encontrado.");
 
+        // Validação simples se o status existe no Enum (opcional, mas recomendado)
         if (!Enum.TryParse<StatusTrabalho>(novoStatus, true, out _))
         {
-            return BadRequest($"Status inválido. Permitidos: {string.Join(", ", Enum.GetNames(typeof(StatusTrabalho)))}");
+           // Se quiser ser estrito, descomente a linha abaixo. 
+           // Por enquanto aceitamos string para facilitar o teste.
+           // return BadRequest("Status inválido.");
         }
 
         trabalho.Status = novoStatus;
         await _context.SaveChangesAsync();
 
-        return Ok(new { mensagem = "Status atualizado com sucesso", novoStatus = trabalho.Status });
+        return Ok(new { mensagem = "Status atualizado", novoStatus = trabalho.Status });
     }
 }

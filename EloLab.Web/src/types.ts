@@ -31,6 +31,7 @@ export interface Trabalho {
     // Objetos preenchidos pelo Backend (Include)
     laboratorio?: Laboratorio;
     clinica?: Clinica;
+    servico?: Servico;
 
     createdAt: string;
 }
