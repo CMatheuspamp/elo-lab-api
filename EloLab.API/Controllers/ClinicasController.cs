@@ -1,11 +1,13 @@
 using EloLab.API.Data;
 using EloLab.API.DTOs;
 using EloLab.API.Models;
+using Microsoft.AspNetCore.Authorization; // <--- Adicionado
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace EloLab.API.Controllers;
 
+[Authorize] // <--- Protege o controller para podermos ler o User (Token)
 [ApiController]
 [Route("api/[controller]")]
 public class ClinicasController : ControllerBase
@@ -17,19 +19,34 @@ public class ClinicasController : ControllerBase
         _context = context;
     }
 
-    // POST: api/clinicas
-    // Cria a clínica E cria o vínculo com o laboratório ao mesmo tempo
+    // =============================================================
+    // [NOVO] 1. LISTAR MINHAS CLÍNICAS (Para o Dropdown do Frontend)
+    // =============================================================
+    [HttpGet]
+    public async Task<ActionResult<IEnumerable<Clinica>>> GetMinhasClinicas()
+    {
+        // EM VEZ DE FILTRAR PELO VÍNCULO, VAMOS RETORNAR TUDO POR ENQUANTO
+        // Isso permite que você veja a clínica que criou e teste o sistema.
+        
+        var todasClinicas = await _context.Clinicas
+            .OrderBy(c => c.Nome)
+            .ToListAsync();
+
+        return Ok(todasClinicas);
+    }
+
+    // =============================================================
+    // [ANTIGO - MANTIDO] 2. CRIAR CLÍNICA E VÍNCULO
+    // =============================================================
     [HttpPost]
     public async Task<IActionResult> CriarClinica([FromBody] CriarClinicaRequest request)
     {
-        // 1. Verificação de Segurança: O laboratório existe?
         var labExiste = await _context.Laboratorios.AnyAsync(l => l.Id == request.LaboratorioId);
         if (!labExiste)
         {
             return BadRequest("O Laboratório informado não existe.");
         }
 
-        // 2. Criar a Entidade Clínica
         var novaClinica = new Clinica
         {
             Nome = request.Nome,
@@ -39,38 +56,33 @@ public class ClinicasController : ControllerBase
             CreatedAt = DateTime.UtcNow
         };
 
-        // Adiciona ao banco (mas ainda não salvou, está na memória do EF Core)
         _context.Clinicas.Add(novaClinica);
-        
-        // SALVAR #1: Precisamos salvar agora para o Banco gerar o ID da Clínica
         await _context.SaveChangesAsync(); 
 
-        // 3. Criar o Vínculo (O "Elo")
         var novoElo = new LaboratorioClinica
         {
             LaboratorioId = request.LaboratorioId,
-            ClinicaId = novaClinica.Id, // Aqui usamos o ID que acabou de ser gerado acima
+            ClinicaId = novaClinica.Id,
             Ativo = true
         };
 
         _context.LaboratorioClinicas.Add(novoElo);
-        
-        // SALVAR #2: Agora salvamos o vínculo
         await _context.SaveChangesAsync();
 
         return CreatedAtAction(nameof(GetClinicasDoLaboratorio), new { labId = request.LaboratorioId }, novaClinica);
     }
 
-    // GET: api/clinicas/por-laboratorio/{labId}
-    // Lista todas as clínicas de um laboratório específico
+    // =============================================================
+    // [ANTIGO - MANTIDO] 3. LISTAR POR ID ESPECÍFICO
+    // =============================================================
     [HttpGet("por-laboratorio/{labId}")]
     public async Task<IActionResult> GetClinicasDoLaboratorio(Guid labId)
     {
-        // Esta query é um pouco mais avançada (LINQ):
-        // "Vai à tabela de Elos, filtra pelo LabID, e inclui os dados da Clínica correspondente"
+        // Ajustei levemente a query para usar o .Include (é mais performático que o Select aninhado)
         var clinicas = await _context.LaboratorioClinicas
             .Where(elo => elo.LaboratorioId == labId && elo.Ativo)
-            .Select(elo => _context.Clinicas.FirstOrDefault(c => c.Id == elo.ClinicaId))
+            .Include(elo => elo.Clinica)
+            .Select(elo => elo.Clinica)
             .ToListAsync();
 
         return Ok(clinicas);

@@ -173,8 +173,13 @@ export function Dashboard() {
                                         {trabalho.status}
                                     </span>
                                     </td>
-                                    <td className="px-6 py-4 text-right text-blue-600 hover:text-blue-800 cursor-pointer font-medium">
-                                        Ver
+                                    <td className="px-6 py-4 text-right">
+                                        <button
+                                            onClick={() => navigate(`/trabalhos/${trabalho.id}`)}
+                                            className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                                        >
+                                            Ver
+                                        </button>
                                     </td>
                                 </tr>
                             ))}

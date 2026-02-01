@@ -9,8 +9,9 @@ export function NewJob() {
     const [loading, setLoading] = useState(false);
     const [user, setUser] = useState<UserSession | null>(null);
 
-    // Lista de serviços disponíveis
+    // Listas para os Dropdowns
     const [listaServicos, setListaServicos] = useState<Servico[]>([]);
+    const [listaClinicas, setListaClinicas] = useState<any[]>([]); // <--- Adicionado
 
     // Estados do Formulário
     const [paciente, setPaciente] = useState('');
@@ -20,7 +21,6 @@ export function NewJob() {
     const [obs, setObs] = useState('');
     const [clinicaId, setClinicaId] = useState('');
 
-    // Agora temos o ServicoId de volta!
     const [servicoId, setServicoId] = useState('');
     const [valor, setValor] = useState('');
 
@@ -28,8 +28,15 @@ export function NewJob() {
         // 1. Pega dados do usuário
         api.get('/Auth/me').then(res => setUser(res.data));
 
-        // 2. Pega lista de serviços para o Dropdown
-        api.get('/Servicos').then(res => setListaServicos(res.data)).catch(() => console.log('Sem serviços cadastrados'));
+        // 2. Pega lista de serviços
+        api.get('/Servicos')
+            .then(res => setListaServicos(res.data))
+            .catch(() => console.log('Sem serviços cadastrados'));
+
+        // 3. Pega lista de clínicas (NOVO)
+        api.get('/Clinicas')
+            .then(res => setListaClinicas(res.data))
+            .catch(() => console.log('Erro ao buscar clínicas'));
     }, []);
 
     // Quando escolhe um serviço, atualiza o preço automaticamente
@@ -53,7 +60,7 @@ export function NewJob() {
             const payload = {
                 laboratorioId: user.meusDados.id,
                 clinicaId: clinicaId,
-                servicoId: servicoId || null, // Envia o ID selecionado
+                servicoId: servicoId || null,
                 pacienteNome: paciente,
                 dentes: dentes,
                 corDente: cor,
@@ -157,21 +164,29 @@ export function NewJob() {
                             </h3>
                             <div className="grid grid-cols-1 gap-4">
 
-                                {/* ID da Clínica */}
+                                {/* DROPDOWN DE CLÍNICAS (Substituiu o Input de texto) */}
                                 <div>
-                                    <label className="mb-1 block text-xs font-semibold text-blue-800">ID da Clínica Parceira</label>
-                                    <input
-                                        required
-                                        type="text"
-                                        value={clinicaId}
-                                        onChange={e => setClinicaId(e.target.value)}
-                                        className="w-full rounded border border-blue-200 bg-white py-2 px-3 text-sm outline-none focus:border-blue-500"
-                                        placeholder="Cole o ID da Clínica"
-                                    />
+                                    <label className="mb-1 block text-xs font-semibold text-blue-800">Clínica Parceira</label>
+                                    <div className="relative">
+                                        <select
+                                            required
+                                            value={clinicaId}
+                                            onChange={e => setClinicaId(e.target.value)}
+                                            className="w-full appearance-none rounded border border-blue-200 bg-white py-2 pl-3 pr-8 text-sm outline-none focus:border-blue-500"
+                                        >
+                                            <option value="">Selecione a Clínica...</option>
+                                            {listaClinicas.map((clinica: any) => (
+                                                <option key={clinica.id} value={clinica.id}>
+                                                    {clinica.nome}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <ChevronDown className="pointer-events-none absolute right-2 top-2.5 h-4 w-4 text-blue-400" />
+                                    </div>
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
-                                    {/* DROPDOWN DE SERVIÇOS (Aqui está a mágica!) */}
+                                    {/* DROPDOWN DE SERVIÇOS */}
                                     <div>
                                         <label className="mb-1 block text-xs font-semibold text-blue-800">Serviço (Tabela)</label>
                                         <div className="relative">

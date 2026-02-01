@@ -1,22 +1,32 @@
+using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using System.Text.Json.Serialization; // Importante para evitar ciclos infinitos no JSON
 
 namespace EloLab.API.Models;
 
-[Table("laboratorio_clinicas")]
 public class LaboratorioClinica
 {
-    [Column("id")]
-    public Guid Id { get; set; }
+    [Key]
+    public Guid Id { get; set; } = Guid.NewGuid();
 
-    [Column("laboratorio_id")]
-    public Guid LaboratorioId { get; set; } // Chave Estrangeira para Lab
+    [Required]
+    public Guid LaboratorioId { get; set; }
 
-    [Column("clinica_id")]
-    public Guid ClinicaId { get; set; } // Chave Estrangeira para Clinica
+    [Required]
+    public Guid ClinicaId { get; set; }
 
-    [Column("ativo")]
     public bool Ativo { get; set; } = true;
-
-    [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    // =================================================================
+    // PROPRIEDADES DE NAVEGAÇÃO (O SEGREDO PARA O INCLUDE FUNCIONAR)
+    // =================================================================
+    
+    [ForeignKey("LaboratorioId")]
+    [JsonIgnore] // Evita que o JSON fique num loop infinito (Lab -> Clinica -> Lab...)
+    public virtual Laboratorio? Laboratorio { get; set; }
+
+    [ForeignKey("ClinicaId")]
+    [JsonIgnore]
+    public virtual Clinica? Clinica { get; set; }
 }

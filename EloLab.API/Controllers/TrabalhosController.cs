@@ -108,7 +108,24 @@ public class TrabalhosController : ControllerBase
         // Retorna o trabalho criado
         return Ok(trabalho);
     }
+    
+    // =============================================================
+    // [NOVO] 4. BUSCAR UM TRABALHO ESPECÍFICO (Detalhes)
+    // =============================================================
+    [HttpGet("{id}")]
+    public async Task<ActionResult<Trabalho>> GetTrabalho(Guid id)
+    {
+        var trabalho = await _context.Trabalhos
+            .Include(t => t.Clinica)
+            .Include(t => t.Laboratorio)
+            .Include(t => t.Servico)
+            .FirstOrDefaultAsync(t => t.Id == id);
 
+        if (trabalho == null) return NotFound();
+
+        return Ok(trabalho);
+    }
+    
     // =============================================================
     // 3. MUDAR STATUS
     // =============================================================

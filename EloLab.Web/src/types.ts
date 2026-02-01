@@ -21,18 +21,19 @@ export interface Trabalho {
     id: string;
     pacienteNome: string;
     dentes?: string;
-    corDente?: string; // Novo campo de Cor
+    corDente?: string;
     dataEntregaPrevista: string;
     valorFinal: number;
     status: 'Pendente' | 'EmProducao' | 'Concluido' | 'Entregue';
     laboratorioId: string;
     clinicaId: string;
 
-    // Objetos preenchidos pelo Backend (Include)
+    // O campo correto conforme o seu Backend:
+    descricaoPersonalizada?: string;
+
     laboratorio?: Laboratorio;
     clinica?: Clinica;
     servico?: Servico;
-
     createdAt: string;
 }
 
