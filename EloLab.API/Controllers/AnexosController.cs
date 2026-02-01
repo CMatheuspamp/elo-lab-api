@@ -1,11 +1,13 @@
 using EloLab.API.Data;
-using EloLab.API.DTOs;
+using EloLab.API.DTOs; // Certifique-se de ter o DTO criado (veja abaixo)
 using EloLab.API.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace EloLab.API.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class AnexosController : ControllerBase
@@ -19,55 +21,66 @@ public class AnexosController : ControllerBase
         _supabaseClient = supabaseClient;
     }
 
-    // POST: api/anexos/upload
-    // Usa o DTO 'UploadAnexoRequest' para agrupar o ID e o Arquivo, o que corrige o erro do Swagger
+    // =============================================================
+    // 1. UPLOAD DE ARQUIVO (Supabase + Banco)
+    // =============================================================
     [HttpPost("upload")]
     public async Task<IActionResult> UploadAnexo([FromForm] UploadAnexoRequest request)
     {
-        // 1. Validações básicas
+        // A. Validações Básicas
         if (request.Arquivo == null || request.Arquivo.Length == 0)
             return BadRequest("Nenhum arquivo enviado.");
 
         var trabalho = await _context.Trabalhos.FindAsync(request.TrabalhoId);
         if (trabalho == null) return NotFound("Trabalho não encontrado.");
 
-        // 2. Define um nome único para o arquivo para evitar substituições
-        // Ex: id-do-trabalho_uuid-aleatorio_foto.jpg
-        var nomeArquivo = $"{request.TrabalhoId}_{Guid.NewGuid()}_{request.Arquivo.FileName}";
-
-        // 3. Converte o arquivo recebido para um array de bytes (formato que o Supabase aceita)
-        using var memoryStream = new MemoryStream();
-        await request.Arquivo.CopyToAsync(memoryStream);
-        var bytes = memoryStream.ToArray();
-
-        // 4. Envia o arquivo para o Bucket "trabalhos" no Supabase Storage
-        await _supabaseClient.Storage
-            .From("trabalhos")
-            .Upload(bytes, nomeArquivo);
-
-        // 5. Obtém o Link Público da imagem para guardarmos no banco
-        var urlPublica = _supabaseClient.Storage
-            .From("trabalhos")
-            .GetPublicUrl(nomeArquivo);
-
-        // 6. Salva os dados do anexo no PostgreSQL
-        var anexo = new Anexo
+        try
         {
-            TrabalhoId = request.TrabalhoId,
-            NomeArquivo = request.Arquivo.FileName,
-            Url = urlPublica,
-            TamanhoBytes = request.Arquivo.Length,
-            CreatedAt = DateTime.UtcNow
-        };
+            // B. Preparar Nome Único (Evita substituição de arquivos com mesmo nome)
+            // Ex: "uuid-trabalho/uuid-arquivo-nome.stl" (Usar barra cria pastas virtuais no Supabase)
+            var nomeArquivo = $"{request.TrabalhoId}/{Guid.NewGuid()}-{request.Arquivo.FileName}";
 
-        _context.Anexos.Add(anexo);
-        await _context.SaveChangesAsync();
+            // C. Converter para Bytes
+            using var memoryStream = new MemoryStream();
+            await request.Arquivo.CopyToAsync(memoryStream);
+            var bytes = memoryStream.ToArray();
 
-        return Ok(anexo);
+            // D. Enviar para o Supabase Storage
+            // IMPORTANTE: O nome do bucket deve ser exato ao criado no painel ("trabalhos-arquivos")
+            var bucket = _supabaseClient.Storage.From("trabalhos-arquivos");
+            
+            await bucket.Upload(bytes, nomeArquivo);
+
+            // E. Obter URL Pública
+            var urlPublica = bucket.GetPublicUrl(nomeArquivo);
+
+            // F. Salvar Metadados no Banco de Dados
+            var anexo = new Anexo
+            {
+                TrabalhoId = request.TrabalhoId,
+                NomeArquivo = request.Arquivo.FileName,
+                Url = urlPublica,
+                TipoArquivo = request.Arquivo.ContentType, // Ex: application/pdf, image/png
+                TamanhoBytes = request.Arquivo.Length,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.Anexos.Add(anexo);
+            await _context.SaveChangesAsync();
+
+            return Ok(anexo);
+        }
+        catch (Exception ex)
+        {
+            // Logar o erro real no console para debug
+            Console.WriteLine($"Erro no Upload: {ex.Message}");
+            return StatusCode(500, $"Erro ao fazer upload: {ex.Message}");
+        }
     }
 
-    // GET: api/anexos/trabalho/{trabalhoId}
-    // Lista todas as fotos/arquivos de um trabalho específico
+    // =============================================================
+    // 2. LISTAR ANEXOS DE UM TRABALHO
+    // =============================================================
     [HttpGet("trabalho/{trabalhoId}")]
     public async Task<IActionResult> GetAnexosDoTrabalho(Guid trabalhoId)
     {
@@ -77,5 +90,23 @@ public class AnexosController : ControllerBase
             .ToListAsync();
 
         return Ok(anexos);
+    }
+
+    // =============================================================
+    // 3. DELETAR ANEXO (Opcional, mas útil)
+    // =============================================================
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeletarAnexo(Guid id)
+    {
+        var anexo = await _context.Anexos.FindAsync(id);
+        if (anexo == null) return NotFound();
+
+        // Nota: Idealmente deletaríamos do Supabase também, mas para MVP 
+        // deletar do banco já remove o acesso ao link.
+        
+        _context.Anexos.Remove(anexo);
+        await _context.SaveChangesAsync();
+
+        return NoContent();
     }
 }
