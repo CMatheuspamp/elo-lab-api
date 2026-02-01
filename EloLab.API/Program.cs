@@ -94,6 +94,17 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
+// 1. ADICIONAR O SERVIÇO DE CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("PermitirFrontend", policy =>
+    {
+        policy.WithOrigins("http://localhost:5173") // <--- A URL do seu React
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
 var app = builder.Build();
 
 // =========================================================
@@ -106,6 +117,9 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+// 2. ATIVAR O CORS (Coloque exatamente aqui)
+app.UseCors("PermitirFrontend");
 
 app.UseAuthentication();
 app.UseAuthorization();
