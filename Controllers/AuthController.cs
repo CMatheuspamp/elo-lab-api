@@ -35,4 +35,21 @@ public class AuthController : ControllerBase
             return BadRequest(new { erro = "Login falhou. Verifique email e senha." });
         }
     }
+    
+    [HttpGet("me")]
+    [Microsoft.AspNetCore.Authorization.Authorize] // Só funciona se tiver Token
+    public IActionResult GetMe()
+    {
+        // 1. Pega o ID do usuário de dentro do Token (O "crachá")
+        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        if (string.IsNullOrEmpty(userId))
+            return Unauthorized();
+
+        return Ok(new { 
+            Mensagem = "Você está autenticado!", 
+            SeuId = userId,
+            // Aqui futuramente vamos devolver: "Tipo: Laboratorio" ou "Tipo: Clinica"
+        });
+    }
 }

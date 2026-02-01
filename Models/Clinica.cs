@@ -22,4 +22,7 @@ public class Clinica
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    
+    [Column("usuario_id")]
+    public Guid? UsuarioId { get; set; }
 }
