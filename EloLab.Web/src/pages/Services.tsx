@@ -1,25 +1,27 @@
 import { useEffect, useState } from 'react';
-import { api } from '../services/api'; // Verifique se este caminho está certo
-import { useNavigate } from 'react-router-dom';
+import { api } from '../services/api';
 import {
     Plus, Trash2, Clock, Loader2, ArrowLeft,
-    Save, X, Edit,  // Troquei 'Pencil' por 'Edit' que é mais comum em versões antigas
+    Save, X, Edit, Search // Adicionei Search
 } from 'lucide-react';
-import type { Servico } from '../types'; // Importando a tipagem que acabamos de corrigir
+import { useNavigate } from 'react-router-dom';
+import type { Servico } from '../types';
 
-// Lista de materiais para o Dropdown
 const MATERIAIS = ["Zircónia", "E-max", "Metal", "Acrílico", "Cerâmica", "Outros"];
 
 export function Services() {
     const navigate = useNavigate();
 
-    // Estados
+    // Estados de Dados
     const [servicos, setServicos] = useState<Servico[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
-    const [filtroMaterial, setFiltroMaterial] = useState('Todos');
 
-    // Formulário
+    // Estados de Filtro
+    const [filtroMaterial, setFiltroMaterial] = useState('Todos');
+    const [busca, setBusca] = useState(''); // <--- Novo Estado de Busca
+
+    // Estados do Formulário
     const [idEdicao, setIdEdicao] = useState<string | null>(null);
     const [nome, setNome] = useState('');
     const [material, setMaterial] = useState('Zircónia');
@@ -44,10 +46,8 @@ export function Services() {
     function handleEditClick(s: Servico) {
         setIdEdicao(s.id);
         setNome(s.nome);
-        // Garante que se o material vier nulo, usa 'Outros'
         setMaterial(s.material || 'Outros');
         setPreco(s.precoBase.toString());
-        // Garante que se o prazo vier nulo, usa '0'
         setPrazo(s.prazoDiasUteis ? s.prazoDiasUteis.toString() : '5');
     }
 
@@ -96,9 +96,12 @@ export function Services() {
         }
     }
 
-    const servicosFiltrados = filtroMaterial === 'Todos'
-        ? servicos
-        : servicos.filter(s => s.material === filtroMaterial);
+    // LÓGICA DE FILTRAGEM COMBINADA
+    const servicosFiltrados = servicos.filter(s => {
+        const matchesMaterial = filtroMaterial === 'Todos' || s.material === filtroMaterial;
+        const matchesBusca = s.nome.toLowerCase().includes(busca.toLowerCase());
+        return matchesMaterial && matchesBusca;
+    });
 
     return (
         <div className="min-h-screen bg-slate-50 p-6 pb-20">
@@ -160,23 +163,27 @@ export function Services() {
                     {/* Listagem */}
                     <div className="lg:col-span-2 space-y-4">
 
-                        {/* Filtros */}
-                        <div className="flex gap-2 overflow-x-auto pb-2">
-                            <button
-                                onClick={() => setFiltroMaterial('Todos')}
-                                className={`whitespace-nowrap rounded-full px-4 py-1.5 text-xs font-bold transition ${filtroMaterial === 'Todos' ? 'bg-slate-800 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
-                            >
-                                Todos
-                            </button>
-                            {MATERIAIS.map(m => (
-                                <button
-                                    key={m}
-                                    onClick={() => setFiltroMaterial(m)}
-                                    className={`whitespace-nowrap rounded-full px-4 py-1.5 text-xs font-bold transition ${filtroMaterial === m ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}
-                                >
-                                    {m}
-                                </button>
-                            ))}
+                        {/* Filtros e Busca */}
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                            {/* Filtro Material */}
+                            <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0 no-scrollbar">
+                                <button onClick={() => setFiltroMaterial('Todos')} className={`whitespace-nowrap rounded-full px-4 py-1.5 text-xs font-bold transition ${filtroMaterial === 'Todos' ? 'bg-slate-800 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}>Todos</button>
+                                {MATERIAIS.map(m => (
+                                    <button key={m} onClick={() => setFiltroMaterial(m)} className={`whitespace-nowrap rounded-full px-4 py-1.5 text-xs font-bold transition ${filtroMaterial === m ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}>{m}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Barra de Busca */}
+                        <div className="relative">
+                            <Search className="absolute top-2.5 left-3 h-4 w-4 text-slate-400" />
+                            <input
+                                type="text"
+                                placeholder="Pesquisar por nome do serviço..."
+                                value={busca}
+                                onChange={e => setBusca(e.target.value)}
+                                className="w-full rounded-xl border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                            />
                         </div>
 
                         <div className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
@@ -205,19 +212,13 @@ export function Services() {
                                                     </div>
                                                 </div>
                                             </div>
-
                                             <div className="flex items-center gap-4">
                                                 <span className="font-bold text-slate-900 text-sm sm:text-base">
                                                     {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(s.precoBase)}
                                                 </span>
-
                                                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button onClick={() => handleEditClick(s)} className="rounded p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition">
-                                                        <Edit className="h-4 w-4" />
-                                                    </button>
-                                                    <button onClick={() => handleDelete(s.id)} className="rounded p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 transition">
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </button>
+                                                    <button onClick={() => handleEditClick(s)} className="rounded p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600 transition"><Edit className="h-4 w-4" /></button>
+                                                    <button onClick={() => handleDelete(s.id)} className="rounded p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 transition"><Trash2 className="h-4 w-4" /></button>
                                                 </div>
                                             </div>
                                         </div>
@@ -226,7 +227,6 @@ export function Services() {
                             )}
                         </div>
                     </div>
-
                 </div>
             </div>
         </div>
