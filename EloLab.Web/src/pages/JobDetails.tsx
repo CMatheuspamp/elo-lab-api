@@ -35,24 +35,28 @@ export function JobDetails() {
 
     // Auth e Permissões
     const [meuId, setMeuId] = useState<string>('');
-    const [souLaboratorio, setSouLaboratorio] = useState(false); // <--- CONTROLE DE PERMISSÃO
+    const [souLaboratorio, setSouLaboratorio] = useState(false);
 
     // Estados de UI
     const [loading, setLoading] = useState(true);
+    const [erroCarregamento, setErroCarregamento] = useState('');
     const [updating, setUpdating] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [sendingMsg, setSendingMsg] = useState(false);
 
-    // Inputs
+    // Inputs e Refs
     const [novoTexto, setNovoTexto] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+
+    // Controle de Scroll
+    const prevMensagensLength = useRef(0);
 
     useEffect(() => {
         loadData();
     }, [id, navigate]);
 
-    // Polling do Chat (Atualiza a cada 3 segundos)
+    // Polling do Chat
     useEffect(() => {
         if (!id) return;
         const interval = setInterval(() => {
@@ -61,20 +65,22 @@ export function JobDetails() {
         return () => clearInterval(interval);
     }, [id]);
 
+    // Scroll automático apenas se houver nova mensagem
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (mensagens.length > prevMensagensLength.current) {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        }
+        prevMensagensLength.current = mensagens.length;
     }, [mensagens]);
 
     async function loadData() {
         try {
-            // 1. Quem sou eu?
+            // 1. Identificar Usuário
             const meRes = await api.get('/Auth/me');
             const dadosUser = meRes.data;
 
             const myId = dadosUser.meusDados.usuarioId || dadosUser.id;
             setMeuId(myId);
-
-            // Define a permissão: Só mostramos botões se for 'Laboratorio'
             setSouLaboratorio(dadosUser.tipo === 'Laboratorio');
 
             // 2. Trabalho
@@ -82,15 +88,17 @@ export function JobDetails() {
             setTrabalho(workResponse.data);
 
             // 3. Anexos
-            const filesResponse = await api.get(`/Anexos/trabalho/${id}`);
-            setAnexos(filesResponse.data);
+            try {
+                const filesResponse = await api.get(`/Anexos/trabalho/${id}`);
+                setAnexos(filesResponse.data);
+            } catch (e) { console.log("Sem anexos ou erro ao buscar anexos"); }
 
             // 4. Mensagens
             await loadMensagens(true);
 
-        } catch (error) {
+        } catch (error: any) {
             console.error(error);
-            if (!trabalho) navigate('/dashboard');
+            setErroCarregamento("Não foi possível carregar os detalhes. Verifique o ID.");
         } finally {
             setLoading(false);
         }
@@ -165,8 +173,18 @@ export function JobDetails() {
         } catch (error) { alert("Erro ao excluir."); }
     }
 
-    if (loading || !trabalho) {
+    if (loading) {
         return <div className="flex h-screen items-center justify-center text-slate-400"><Loader2 className="animate-spin" /></div>;
+    }
+
+    if (!trabalho || erroCarregamento) {
+        return (
+            <div className="flex h-screen flex-col items-center justify-center gap-4 text-slate-500">
+                <AlertCircle className="h-10 w-10 text-red-400" />
+                <p>{erroCarregamento || "Trabalho não encontrado."}</p>
+                <button onClick={() => navigate('/dashboard')} className="text-blue-600 hover:underline">Voltar ao Dashboard</button>
+            </div>
+        );
     }
 
     const isPendente = trabalho.status === 'Pendente';
@@ -197,16 +215,14 @@ export function JobDetails() {
                         </div>
                     </div>
 
-                    {/* Workflow Actions (SÓ APARECE SE FOR LABORATÓRIO) */}
+                    {/* Workflow Actions */}
                     <div className="flex gap-3">
-                        {/* Se for Clínica, mostra apenas o status atual como "etiqueta" sem ação */}
                         {!souLaboratorio && (
                             <div className="flex items-center gap-2 rounded-xl bg-slate-100 px-6 py-3 text-sm font-bold text-slate-600 border border-slate-200">
                                 Status: {trabalho.status}
                             </div>
                         )}
 
-                        {/* Se for Laboratório, mostra os botões de ação */}
                         {souLaboratorio && isPendente && (
                             <button onClick={() => changeStatus('EmProducao')} disabled={updating} className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-bold text-white hover:bg-blue-700 shadow-lg shadow-blue-200 transition disabled:opacity-50">
                                 {updating ? <Loader2 className="animate-spin h-5 w-5"/> : <Play className="h-5 w-5" />} Iniciar Produção
@@ -217,7 +233,6 @@ export function JobDetails() {
                                 {updating ? <Loader2 className="animate-spin h-5 w-5"/> : <CheckCircle className="h-5 w-5" />} Concluir Trabalho
                             </button>
                         )}
-                        {/* O botão 'Pronto para Entrega' é informativo, então pode aparecer para o Lab */}
                         {isConcluido && (
                             <button disabled className="flex items-center gap-2 rounded-xl bg-slate-100 px-6 py-3 text-sm font-bold text-slate-500 cursor-default border border-slate-200">
                                 <Package className="h-5 w-5" /> Pronto para Entrega
@@ -226,12 +241,12 @@ export function JobDetails() {
                     </div>
                 </div>
 
-                {/* Resto do Layout (Mantido igual) */}
+                {/* Grid Content */}
                 <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
 
                     {/* COLUNA ESQUERDA (2/3) */}
                     <div className="lg:col-span-2 space-y-8">
-                        {/* Card Ficha Técnica */}
+                        {/* Ficha Técnica */}
                         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                             <h3 className="mb-6 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-400">
                                 <FileText className="h-4 w-4" /> Ficha Técnica
@@ -268,7 +283,7 @@ export function JobDetails() {
                             </div>
                         </div>
 
-                        {/* Card Arquivos */}
+                        {/* Arquivos */}
                         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                             <div className="mb-6 flex items-center justify-between">
                                 <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-400">

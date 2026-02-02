@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Building2, Calendar, Search, Plus, Tag } from 'lucide-react'; // Adicionado Tag aqui
+import {
+    LogOut, Building2, Calendar, Search, Plus, Tag,
+    TrendingUp, AlertCircle, Clock, CheckCircle, Wallet
+} from 'lucide-react';
 import type { UserSession, Trabalho } from '../types';
 
 export function Dashboard() {
@@ -10,6 +13,7 @@ export function Dashboard() {
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
 
+    // Funções auxiliares de formatação
     const formatDate = (dateString: string) => {
         return new Date(dateString).toLocaleDateString('pt-BR');
     };
@@ -50,6 +54,15 @@ export function Dashboard() {
         navigate('/');
     }
 
+    // Lógica para diferenciar Lab de Clínica
+    const isLab = user?.tipo === 'Laboratorio';
+
+    // Cálculos para os Cards
+    const pendentes = trabalhos.filter(t => t.status === 'Pendente').length;
+    const emProducao = trabalhos.filter(t => t.status === 'EmProducao').length;
+    const concluidos = trabalhos.filter(t => t.status === 'Concluido').length;
+    const totalValor = trabalhos.reduce((acc, t) => acc + t.valorFinal, 0);
+
     if (loading || !user) {
         return <div className="flex h-screen items-center justify-center text-slate-400">Carregando...</div>;
     }
@@ -57,7 +70,7 @@ export function Dashboard() {
     return (
         <div className="min-h-screen bg-slate-50 pb-20">
 
-            {/* Header */}
+            {/* Header Fixo (Seu layout original) */}
             <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-4 shadow-sm">
                 <div className="mx-auto flex max-w-6xl items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -66,8 +79,7 @@ export function Dashboard() {
                     </div>
 
                     <div className="flex items-center gap-6">
-                        {/* BOTÃO TABELA DE PREÇOS ADICIONADO AQUI */}
-                        {user.tipo === 'Laboratorio' && (
+                        {isLab && (
                             <button
                                 onClick={() => navigate('/servicos')}
                                 className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
@@ -88,10 +100,14 @@ export function Dashboard() {
             </header>
 
             <main className="mx-auto mt-8 max-w-6xl px-6">
+
+                {/* Título e Botão Novo Pedido */}
                 <div className="mb-6 flex items-center justify-between">
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900">Trabalhos</h1>
-                        <p className="text-slate-500">Gerencie seus pedidos e produções</p>
+                        <p className="text-slate-500">
+                            {isLab ? 'Visão geral da produção' : 'Acompanhe seus pedidos'}
+                        </p>
                     </div>
                     <button
                         onClick={() => navigate('/trabalhos/novo')}
@@ -100,6 +116,73 @@ export function Dashboard() {
                     </button>
                 </div>
 
+                {/* === CARDS DE ESTATÍSTICA (Lógica Lab vs Clínica) === */}
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+
+                    {/* Card 1: Financeiro */}
+                    <div className="relative overflow-hidden rounded-xl bg-white p-6 shadow-sm border border-slate-200">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-xs font-bold uppercase text-slate-400">
+                                    {isLab ? 'Faturamento Total' : 'Total em Pedidos'}
+                                </p>
+                                <h3 className="mt-2 text-2xl font-bold text-slate-900">
+                                    {formatCurrency(totalValor)}
+                                </h3>
+                            </div>
+                            <div className="rounded-full bg-blue-50 p-3 text-blue-600">
+                                {isLab ? <TrendingUp className="h-6 w-6" /> : <Wallet className="h-6 w-6" />}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Card 2: Pendentes */}
+                    <div className="rounded-xl bg-white p-6 shadow-sm border border-slate-200">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-xs font-bold uppercase text-slate-400">
+                                    {isLab ? 'Novos Pedidos' : 'Aguardando Início'}
+                                </p>
+                                <h3 className="mt-2 text-2xl font-bold text-slate-900">{pendentes}</h3>
+                            </div>
+                            <div className="rounded-full bg-orange-50 p-3 text-orange-600">
+                                <AlertCircle className="h-6 w-6" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Card 3: Em Produção */}
+                    <div className="rounded-xl bg-white p-6 shadow-sm border border-slate-200">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-xs font-bold uppercase text-slate-400">
+                                    Em Produção
+                                </p>
+                                <h3 className="mt-2 text-2xl font-bold text-slate-900">{emProducao}</h3>
+                            </div>
+                            <div className="rounded-full bg-purple-50 p-3 text-purple-600">
+                                <Clock className="h-6 w-6" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Card 4: Concluídos */}
+                    <div className="rounded-xl bg-white p-6 shadow-sm border border-slate-200">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-xs font-bold uppercase text-slate-400">
+                                    {isLab ? 'Concluídos' : 'Prontos'}
+                                </p>
+                                <h3 className="mt-2 text-2xl font-bold text-slate-900">{concluidos}</h3>
+                            </div>
+                            <div className="rounded-full bg-emerald-50 p-3 text-emerald-600">
+                                <CheckCircle className="h-6 w-6" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Tabela de Trabalhos */}
                 <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                     <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-3">
                         <div className="relative max-w-sm">
@@ -154,7 +237,7 @@ export function Dashboard() {
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-2">
                                             <Building2 className="h-4 w-4 text-slate-400" />
-                                            {user.tipo === 'Laboratorio' ? trabalho.clinica?.nome : trabalho.laboratorio?.nome}
+                                            {isLab ? trabalho.clinica?.nome : trabalho.laboratorio?.nome}
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">

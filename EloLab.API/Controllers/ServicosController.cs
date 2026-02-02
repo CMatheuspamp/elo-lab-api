@@ -1,13 +1,14 @@
 using EloLab.API.Data;
 using EloLab.API.DTOs;
 using EloLab.API.Models;
-using Microsoft.AspNetCore.Authorization; // <--- Importante adicionar isto
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace EloLab.API.Controllers;
 
-[Authorize] // <--- Adicione isto para proteger todo o controlador
+[Authorize]
 [ApiController]
 [Route("api/[controller]")]
 public class ServicosController : ControllerBase
@@ -19,75 +20,91 @@ public class ServicosController : ControllerBase
         _context = context;
     }
 
-    // [NOVO MÉTODO] GET: api/Servicos (Lista os serviços do Próprio Laboratório Logado)
-    // É este que o Frontend "NewJob" vai chamar.
+    // GET: api/Servicos
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Servico>>> GetMeusServicos()
+    public async Task<IActionResult> GetMeusServicos()
     {
-        // 1. Descobrir quem está logado
-        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userId)) userId = User.FindFirst("sub")?.Value;
+        var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!);
         
-        if (string.IsNullOrEmpty(userId)) return Unauthorized();
+        // Descobre qual é o Laboratório deste usuário
+        var laboratorio = await _context.Laboratorios.FirstOrDefaultAsync(l => l.UsuarioId == userId);
+        if (laboratorio == null) return BadRequest("Apenas laboratórios têm serviços.");
 
-        var usuarioGuid = Guid.Parse(userId);
-
-        // 2. Descobrir qual é o laboratório deste usuário
-        var lab = await _context.Laboratorios.FirstOrDefaultAsync(l => l.UsuarioId == usuarioGuid);
-
-        if (lab == null)
-        {
-            // Se for uma Clínica acessando, retorna vazio (ou lógica futura para clínicas)
-            return Ok(new List<Servico>());
-        }
-
-        // 3. Retornar os serviços desse laboratório
-        return await _context.Servicos
-            .Where(s => s.LaboratorioId == lab.Id && s.Ativo)
-            .OrderBy(s => s.Nome)
-            .ToListAsync();
-    }
-
-    // --- MÉTODOS ANTIGOS (MANTIDOS) ---
-
-    // 1. Adicionar um serviço ao menu do laboratório
-    [HttpPost]
-    public async Task<IActionResult> CriarServico([FromBody] CriarServicoRequest request)
-    {
-        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userId)) userId = User.FindFirst("sub")?.Value;
-
-        var usuarioGuid = Guid.Parse(userId!);
-        var lab = await _context.Laboratorios.FirstOrDefaultAsync(l => l.UsuarioId == usuarioGuid);
-
-        if (lab == null) return Unauthorized("Apenas laboratórios podem criar serviços.");
-
-        var novoServico = new Servico
-        {
-            LaboratorioId = lab.Id, // Forçamos o ID do lab logado
-            Nome = request.Nome,
-            Descricao = request.Descricao,
-            PrecoBase = request.PrecoBase,
-            PrazoDiasUteis = request.PrazoDiasUteis,
-            Ativo = true
-        };
-
-        _context.Servicos.Add(novoServico);
-        await _context.SaveChangesAsync();
-
-        return Ok(novoServico);
-    }
-
-    // 2. Listar o menu de um laboratório específico (Público ou para Clínicas)
-    [AllowAnonymous] // <--- Opcional: Permite que qualquer um veja o menu se tiver o ID
-    [HttpGet("por-laboratorio/{labId}")]
-    public async Task<IActionResult> GetServicosPorLaboratorio(Guid labId)
-    {
         var servicos = await _context.Servicos
-            .Where(s => s.LaboratorioId == labId && s.Ativo)
+            .Where(s => s.LaboratorioId == laboratorio.Id && s.Ativo)
             .OrderBy(s => s.Nome)
             .ToListAsync();
 
         return Ok(servicos);
+    }
+
+    // POST: api/Servicos
+    [HttpPost]
+    public async Task<IActionResult> CriarServico([FromBody] CriarServicoRequest request)
+    {
+        var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!);
+        var laboratorio = await _context.Laboratorios.FirstOrDefaultAsync(l => l.UsuarioId == userId);
+        if (laboratorio == null) return Unauthorized("Apenas laboratórios podem criar serviços.");
+
+        var servico = new Servico
+        {
+            LaboratorioId = laboratorio.Id,
+            Nome = request.Nome,
+            Material = request.Material, // <--- Salvando o Material
+            PrecoBase = request.PrecoBase,
+            PrazoDiasUteis = request.PrazoDiasUteis,
+            Descricao = request.Descricao
+        };
+
+        _context.Servicos.Add(servico);
+        await _context.SaveChangesAsync();
+
+        return CreatedAtAction(nameof(GetMeusServicos), new { id = servico.Id }, servico);
+    }
+
+    // PUT: api/Servicos/{id} (EDITAR)
+    [HttpPut("{id}")]
+    public async Task<IActionResult> AtualizarServico(Guid id, [FromBody] CriarServicoRequest request)
+    {
+        var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!);
+        
+        // Verifica se o serviço existe e pertence ao laboratório do usuário logado
+        var servico = await _context.Servicos
+            .Include(s => s.Laboratorio) // Inclui dados do lab para conferir dono
+            .FirstOrDefaultAsync(s => s.Id == id);
+
+        if (servico == null) return NotFound();
+        if (servico.Laboratorio?.UsuarioId != userId) return Unauthorized("Este serviço não é seu.");
+
+        // Atualiza os dados
+        servico.Nome = request.Nome;
+        servico.Material = request.Material; // <--- Atualizando Material
+        servico.PrecoBase = request.PrecoBase;
+        servico.PrazoDiasUteis = request.PrazoDiasUteis;
+        servico.Descricao = request.Descricao;
+
+        await _context.SaveChangesAsync();
+        return Ok(servico);
+    }
+
+    // DELETE: api/Servicos/{id} (EXCLUIR)
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeletarServico(Guid id)
+    {
+        var userId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)?.Value!);
+
+        var servico = await _context.Servicos
+             .Include(s => s.Laboratorio)
+             .FirstOrDefaultAsync(s => s.Id == id);
+
+        if (servico == null) return NotFound();
+        if (servico.Laboratorio?.UsuarioId != userId) return Unauthorized();
+
+        // Hard Delete (Remove do banco) ou Soft Delete (s.Ativo = false)
+        // Vamos usar Hard Delete para simplificar agora
+        _context.Servicos.Remove(servico);
+        await _context.SaveChangesAsync();
+
+        return NoContent();
     }
 }
