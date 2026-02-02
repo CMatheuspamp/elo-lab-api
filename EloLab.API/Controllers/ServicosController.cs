@@ -107,4 +107,18 @@ public class ServicosController : ControllerBase
 
         return NoContent();
     }
+    
+    // GET: api/Servicos/laboratorio/{labId}
+    // Permite que uma Clínica veja os serviços de um Lab específico para fazer o pedido
+    [HttpGet("laboratorio/{labId}")]
+    public async Task<IActionResult> GetServicosPorLaboratorio(Guid labId)
+    {
+        // Apenas usuários logados podem ver
+        var servicos = await _context.Servicos
+            .Where(s => s.LaboratorioId == labId && s.Ativo)
+            .OrderBy(s => s.Nome)
+            .ToListAsync();
+
+        return Ok(servicos);
+    }
 }
