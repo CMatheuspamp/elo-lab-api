@@ -148,4 +148,73 @@ public class TrabalhosController : ControllerBase
 
         return Ok(new { mensagem = "Status atualizado", novoStatus = trabalho.Status });
     }
+    
+    // POST: api/Trabalhos/{id}/anexo
+    [HttpPost("{id}/anexo")]
+    public async Task<IActionResult> UploadAnexo(Guid id, IFormFile arquivo)
+    {
+        // 1. Validar se o trabalho existe
+        var trabalho = await _context.Trabalhos.FindAsync(id);
+        if (trabalho == null) return NotFound("Trabalho não encontrado.");
+
+        if (arquivo == null || arquivo.Length == 0)
+            return BadRequest("Nenhum arquivo enviado.");
+
+        // 2. Validar extensões
+        var extensao = Path.GetExtension(arquivo.FileName).ToLower();
+        var permitidos = new[] { ".stl", ".obj", ".ply", ".jpg", ".jpeg", ".png", ".pdf" };
+        
+        if (!permitidos.Contains(extensao))
+            return BadRequest($"Formato {extensao} não suportado.");
+
+        // 3. Salvar no Disco
+        var pastaUploads = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
+        if (!Directory.Exists(pastaUploads)) Directory.CreateDirectory(pastaUploads);
+
+        var nomeUnico = $"{id}_{Guid.NewGuid()}{extensao}";
+        var caminhoCompleto = Path.Combine(pastaUploads, nomeUnico);
+
+        using (var stream = new FileStream(caminhoCompleto, FileMode.Create))
+        {
+            await arquivo.CopyToAsync(stream);
+        }
+
+        var urlPublica = $"/uploads/{nomeUnico}";
+
+        // 4. Criar o objeto Anexo (usando o TEU modelo existente)
+        var anexo = new Anexo
+        {
+            Id = Guid.NewGuid(),
+            TrabalhoId = id,
+            NomeArquivo = arquivo.FileName,
+            Url = urlPublica,
+            TipoArquivo = extensao,    // Preenchendo o campo que já existe
+            TamanhoBytes = arquivo.Length, // Preenchendo o tamanho
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.Anexos.Add(anexo);
+        
+        // Atualiza a "capa" do trabalho se for o primeiro arquivo ou um arquivo 3D
+        if (string.IsNullOrEmpty(trabalho.ArquivoUrl) || extensao == ".stl" || extensao == ".obj")
+        {
+            trabalho.ArquivoUrl = urlPublica;
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(anexo);
+    }
+    
+    // GET: api/Trabalhos/{id}/anexos
+    [HttpGet("{id}/anexos")]
+    public async Task<IActionResult> GetAnexos(Guid id)
+    {
+        var anexos = await _context.Anexos
+            .Where(a => a.TrabalhoId == id)
+            .OrderByDescending(a => a.CreatedAt)
+            .ToListAsync();
+
+        return Ok(anexos);
+    }
 }

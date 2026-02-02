@@ -1,12 +1,14 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api } from '../services/api';
+import { api } from '../services/api'; // <--- Importante: estamos a usar a config do axios aqui
 import {
     ArrowLeft, Building2, CheckCircle, FileText, Loader2, Play,
     Package, Euro, Paperclip, UploadCloud, Trash2, Send, MessageSquare,
-    Calendar, User, AlertCircle, Printer
+    Calendar, User, AlertCircle, Printer, Eye, Download, FileBox,
+    Image as ImageIcon, File
 } from 'lucide-react';
 import type { Trabalho } from '../types';
+import { StlViewer } from '../components/StlViewer';
 
 // Interfaces Locais
 interface Anexo {
@@ -28,10 +30,37 @@ export function JobDetails() {
     const { id } = useParams();
     const navigate = useNavigate();
 
+    // =========================================================================
+    // CORREÇÃO DA PORTA (DINÂMICA)
+    // =========================================================================
+    // Em vez de hardcoded 'http://localhost:5038', lemos do api.ts
+    const getBaseUrl = () => {
+        // Se a baseURL for "http://localhost:5036/api", removemos o "/api"
+        // para ficar apenas a raiz "http://localhost:5036" onde estão os uploads.
+        const baseURL = api.defaults.baseURL || '';
+        return baseURL.replace(/\/api\/?$/, '');
+    };
+
+    // Função auxiliar para corrigir URL
+    function getFullUrl(url: string) {
+        if (!url) return '';
+        if (url.startsWith('http')) return url; // Se já tiver http, usa direto
+
+        // Garante que a URL relativa começa com /
+        const cleanPath = url.startsWith('/') ? url : `/${url}`;
+
+        // Junta a raiz (porta 5036) com o caminho (/uploads/arquivo.stl)
+        return `${getBaseUrl()}${cleanPath}`;
+    }
+    // =========================================================================
+
     // Estados de Dados
     const [trabalho, setTrabalho] = useState<Trabalho | null>(null);
     const [anexos, setAnexos] = useState<Anexo[]>([]);
     const [mensagens, setMensagens] = useState<Mensagem[]>([]);
+
+    // Estado do Visualizador 3D
+    const [stlParaVisualizar, setStlParaVisualizar] = useState<string | null>(null);
 
     // Auth e Permissões
     const [meuId, setMeuId] = useState<string>('');
@@ -49,14 +78,12 @@ export function JobDetails() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    // Controle de Scroll
     const prevMensagensLength = useRef(0);
 
     useEffect(() => {
         loadData();
     }, [id, navigate]);
 
-    // Polling do Chat
     useEffect(() => {
         if (!id) return;
         const interval = setInterval(() => {
@@ -65,7 +92,6 @@ export function JobDetails() {
         return () => clearInterval(interval);
     }, [id]);
 
-    // Scroll automático apenas se houver nova mensagem
     useEffect(() => {
         if (mensagens.length > prevMensagensLength.current) {
             messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -75,7 +101,6 @@ export function JobDetails() {
 
     async function loadData() {
         try {
-            // 1. Identificar Usuário
             const meRes = await api.get('/Auth/me');
             const dadosUser = meRes.data;
 
@@ -83,17 +108,27 @@ export function JobDetails() {
             setMeuId(myId);
             setSouLaboratorio(dadosUser.tipo === 'Laboratorio');
 
-            // 2. Trabalho
             const workResponse = await api.get(`/Trabalhos/${id}`);
             setTrabalho(workResponse.data);
 
-            // 3. Anexos
             try {
                 const filesResponse = await api.get(`/Anexos/trabalho/${id}`);
                 setAnexos(filesResponse.data);
+
+                // Auto-selecionar o primeiro STL
+                const first3D = filesResponse.data.find((a: Anexo) =>
+                    a.nomeArquivo.toLowerCase().endsWith('.stl') ||
+                    a.nomeArquivo.toLowerCase().endsWith('.obj')
+                );
+
+                if (first3D) {
+                    setStlParaVisualizar(getFullUrl(first3D.url)); // <--- Usa a função corrigida aqui
+                } else if (workResponse.data.arquivoUrl && (workResponse.data.arquivoUrl.endsWith('.stl') || workResponse.data.arquivoUrl.endsWith('.obj'))) {
+                    setStlParaVisualizar(getFullUrl(workResponse.data.arquivoUrl));
+                }
+
             } catch (e) { console.log("Sem anexos ou erro ao buscar anexos"); }
 
-            // 4. Mensagens
             await loadMensagens(true);
 
         } catch (error: any) {
@@ -129,6 +164,14 @@ export function JobDetails() {
         }
     }
 
+    // Função para ícones de arquivo
+    function getFileIcon(nome: string) {
+        const ext = nome.split('.').pop()?.toLowerCase();
+        if (['stl', 'obj', 'ply'].includes(ext || '')) return <FileBox className="h-5 w-5 text-blue-600" />;
+        if (['jpg', 'png', 'jpeg'].includes(ext || '')) return <ImageIcon className="h-5 w-5 text-purple-600" />;
+        return <File className="h-5 w-5 text-slate-400" />;
+    }
+
     async function handleFileSelect(event: React.ChangeEvent<HTMLInputElement>) {
         if (!event.target.files || event.target.files.length === 0 || !trabalho) return;
         const file = event.target.files[0];
@@ -140,8 +183,18 @@ export function JobDetails() {
 
         try {
             await api.post('/Anexos/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+
             const filesResponse = await api.get(`/Anexos/trabalho/${trabalho.id}`);
             setAnexos(filesResponse.data);
+
+            // Se for 3D, carrega automaticamente
+            if(file.name.toLowerCase().endsWith('.stl') || file.name.toLowerCase().endsWith('.obj')) {
+                // Como não temos a URL exata do retorno do upload (o backend retorna o objeto, mas o get já atualizou),
+                // pegamos o último da lista nova
+                const novoAnexo = filesResponse.data.find((a: Anexo) => a.nomeArquivo === file.name);
+                if (novoAnexo) setStlParaVisualizar(getFullUrl(novoAnexo.url));
+            }
+
         } catch (error) {
             alert("Erro ao enviar arquivo.");
         } finally {
@@ -170,6 +223,10 @@ export function JobDetails() {
         try {
             await api.delete(`/Anexos/${anexoId}`);
             setAnexos(anexos.filter(a => a.id !== anexoId));
+            const anexoDeletado = anexos.find(a => a.id === anexoId);
+            if(anexoDeletado && stlParaVisualizar && getFullUrl(anexoDeletado.url) === stlParaVisualizar) {
+                setStlParaVisualizar(null);
+            }
         } catch (error) { alert("Erro ao excluir."); }
     }
 
@@ -217,7 +274,6 @@ export function JobDetails() {
 
                     {/* Workflow Actions */}
                     <div className="flex gap-3">
-
                         <button
                             onClick={() => window.open(`/print/job/${trabalho.id}`, '_blank')}
                             className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 shadow-sm transition"
@@ -225,7 +281,7 @@ export function JobDetails() {
                         >
                             <Printer className="h-5 w-5" />
                         </button>
-                        
+
                         {!souLaboratorio && (
                             <div className="flex items-center gap-2 rounded-xl bg-slate-100 px-6 py-3 text-sm font-bold text-slate-600 border border-slate-200">
                                 Status: {trabalho.status}
@@ -255,6 +311,20 @@ export function JobDetails() {
 
                     {/* COLUNA ESQUERDA (2/3) */}
                     <div className="lg:col-span-2 space-y-8">
+
+                        {/* === ÁREA DO VISUALIZADOR 3D === */}
+                        {stlParaVisualizar ? (
+                            <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-900 shadow-sm">
+                                <div className="p-2 bg-slate-900 text-white flex justify-between items-center px-4">
+                                    <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                                        <FileBox className="h-4 w-4" /> Visualização 3D
+                                    </span>
+                                    <button onClick={() => setStlParaVisualizar(null)} className="text-xs hover:text-red-400">Fechar</button>
+                                </div>
+                                <StlViewer url={stlParaVisualizar} />
+                            </div>
+                        ) : null}
+
                         {/* Ficha Técnica */}
                         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                             <h3 className="mb-6 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-400">
@@ -296,7 +366,7 @@ export function JobDetails() {
                         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                             <div className="mb-6 flex items-center justify-between">
                                 <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-400">
-                                    <Paperclip className="h-4 w-4" /> Arquivos do Caso (STL/Fotos)
+                                    <Paperclip className="h-4 w-4" /> Arquivos do Caso
                                 </h3>
                                 <div className="flex gap-2">
                                     <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".pdf,.jpg,.jpeg,.png,.stl,.obj" />
@@ -318,23 +388,56 @@ export function JobDetails() {
                                     <p className="text-xs text-slate-300">Arraste ou clique no botão acima</p>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                                    {anexos.map(anexo => (
-                                        <div key={anexo.id} className="group relative flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-4 transition hover:border-blue-200 hover:bg-blue-50/50 hover:shadow-sm">
-                                            <a href={anexo.url} target="_blank" rel="noreferrer" className="flex flex-1 items-center gap-3 overflow-hidden">
-                                                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white text-slate-400 shadow-sm group-hover:text-blue-500">
-                                                    <FileText className="h-5 w-5" />
+                                <div className="space-y-3">
+                                    {anexos.map(anexo => {
+                                        const is3D = anexo.nomeArquivo.toLowerCase().endsWith('.stl') ||
+                                            anexo.nomeArquivo.toLowerCase().endsWith('.obj');
+
+                                        return (
+                                            <div key={anexo.id} className="group relative flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-3 transition hover:bg-white hover:shadow-sm">
+                                                <div className="flex items-center gap-3 overflow-hidden">
+                                                    <div className="rounded-lg bg-white p-2 text-slate-400 shadow-sm border border-slate-100">
+                                                        {getFileIcon(anexo.nomeArquivo)}
+                                                    </div>
+                                                    <div className="flex flex-col overflow-hidden">
+                                                        <span className="truncate text-sm font-bold text-slate-700">{anexo.nomeArquivo}</span>
+                                                        <span className="text-[10px] text-slate-400">{new Date(anexo.createdAt).toLocaleDateString()}</span>
+                                                    </div>
                                                 </div>
-                                                <div className="flex flex-col overflow-hidden">
-                                                    <span className="truncate text-sm font-bold text-slate-700 group-hover:text-blue-700">{anexo.nomeArquivo}</span>
-                                                    <span className="text-[10px] text-slate-400">{new Date(anexo.createdAt).toLocaleDateString()}</span>
+
+                                                <div className="flex items-center gap-2">
+                                                    {is3D && (
+                                                        <button
+                                                            onClick={() => setStlParaVisualizar(getFullUrl(anexo.url))}
+                                                            className="rounded-lg bg-white p-2 text-slate-500 shadow-sm border border-slate-100 hover:text-blue-600 hover:border-blue-200 transition"
+                                                            title="Visualizar 3D"
+                                                        >
+                                                            <Eye className="h-4 w-4" />
+                                                        </button>
+                                                    )}
+
+                                                    <a
+                                                        href={getFullUrl(anexo.url)}
+                                                        target="_blank"
+                                                        rel="noreferrer"
+                                                        download
+                                                        className="rounded-lg bg-white p-2 text-slate-500 shadow-sm border border-slate-100 hover:text-green-600 hover:border-green-200 transition"
+                                                        title="Baixar Arquivo"
+                                                    >
+                                                        <Download className="h-4 w-4" />
+                                                    </a>
+
+                                                    <button
+                                                        onClick={() => handleDeleteAnexo(anexo.id)}
+                                                        className="rounded-lg bg-white p-2 text-slate-300 shadow-sm border border-slate-100 hover:text-red-500 hover:border-red-200 transition"
+                                                        title="Excluir"
+                                                    >
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </button>
                                                 </div>
-                                            </a>
-                                            <button onClick={() => handleDeleteAnexo(anexo.id)} className="ml-2 rounded-full p-2 text-slate-300 hover:bg-white hover:text-red-500 hover:shadow-sm transition">
-                                                <Trash2 className="h-4 w-4" />
-                                            </button>
-                                        </div>
-                                    ))}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
                             )}
                         </div>

@@ -56,6 +56,9 @@ public class Trabalho
 
     [Column("descricao_personalizada")]
     public string? DescricaoPersonalizada { get; set; }
+    
+    [Column("arquivo_url")]
+    public string? ArquivoUrl { get; set; }
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

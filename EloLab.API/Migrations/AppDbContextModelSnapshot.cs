@@ -281,6 +281,10 @@ namespace EloLab.API.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<string>("ArquivoUrl")
+                        .HasColumnType("text")
+                        .HasColumnName("arquivo_url");
+
                     b.Property<Guid>("ClinicaId")
                         .HasColumnType("uuid")
                         .HasColumnName("clinica_id");
