@@ -13,7 +13,7 @@ export function Dashboard() {
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
 
-    // Funções auxiliares de formatação
+    // Formatações
     const formatDate = (dateString: string) => {
         return new Date(dateString).toLocaleDateString('pt-BR');
     };
@@ -54,10 +54,9 @@ export function Dashboard() {
         navigate('/');
     }
 
-    // Lógica para diferenciar Lab de Clínica
     const isLab = user?.tipo === 'Laboratorio';
 
-    // Cálculos para os Cards
+    // Cálculos
     const pendentes = trabalhos.filter(t => t.status === 'Pendente').length;
     const emProducao = trabalhos.filter(t => t.status === 'EmProducao').length;
     const concluidos = trabalhos.filter(t => t.status === 'Concluido').length;
@@ -70,7 +69,7 @@ export function Dashboard() {
     return (
         <div className="min-h-screen bg-slate-50 pb-20">
 
-            {/* Header Fixo (Seu layout original) */}
+            {/* Header */}
             <header className="sticky top-0 z-10 border-b border-slate-200 bg-white px-8 py-4 shadow-sm">
                 <div className="mx-auto flex max-w-6xl items-center justify-between">
                     <div className="flex items-center gap-3">
@@ -79,6 +78,16 @@ export function Dashboard() {
                     </div>
 
                     <div className="flex items-center gap-6">
+
+                        {!isLab && (
+                            <button
+                                onClick={() => navigate('/parceiros')}
+                                className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition"
+                            >
+                                <Building2 className="h-3.5 w-3.5" /> Rede de Parceiros
+                            </button>
+                        )}
+
                         {isLab && (
                             <button
                                 onClick={() => navigate('/servicos')}
@@ -88,10 +97,16 @@ export function Dashboard() {
                             </button>
                         )}
 
-                        <div className="text-right">
+                        {/* Botão de Perfil */}
+                        <div
+                            className="text-right cursor-pointer hover:opacity-80 transition group"
+                            onClick={() => navigate('/perfil')}
+                            title="Editar Perfil"
+                        >
                             <p className="text-sm font-semibold text-slate-900">{user.meusDados.nome}</p>
-                            <p className="text-xs text-slate-500">{user.tipo}</p>
+                            <p className="text-xs text-slate-500 group-hover:text-blue-600 group-hover:underline">Meu Perfil</p>
                         </div>
+
                         <button onClick={handleLogout} className="rounded-full p-2 text-slate-400 hover:bg-slate-100 hover:text-red-600 transition">
                             <LogOut className="h-5 w-5" />
                         </button>
@@ -101,7 +116,7 @@ export function Dashboard() {
 
             <main className="mx-auto mt-8 max-w-6xl px-6">
 
-                {/* Título e Botão Novo Pedido */}
+                {/* Título */}
                 <div className="mb-6 flex items-center justify-between">
                     <div>
                         <h1 className="text-2xl font-bold text-slate-900">Trabalhos</h1>
@@ -116,10 +131,9 @@ export function Dashboard() {
                     </button>
                 </div>
 
-                {/* === CARDS DE ESTATÍSTICA (Lógica Lab vs Clínica) === */}
+                {/* Cards */}
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 mb-8">
 
-                    {/* Card 1: Financeiro */}
                     <div className="relative overflow-hidden rounded-xl bg-white p-6 shadow-sm border border-slate-200">
                         <div className="flex items-center justify-between">
                             <div>
@@ -136,7 +150,6 @@ export function Dashboard() {
                         </div>
                     </div>
 
-                    {/* Card 2: Pendentes */}
                     <div className="rounded-xl bg-white p-6 shadow-sm border border-slate-200">
                         <div className="flex items-center justify-between">
                             <div>
@@ -151,7 +164,6 @@ export function Dashboard() {
                         </div>
                     </div>
 
-                    {/* Card 3: Em Produção */}
                     <div className="rounded-xl bg-white p-6 shadow-sm border border-slate-200">
                         <div className="flex items-center justify-between">
                             <div>
@@ -166,7 +178,6 @@ export function Dashboard() {
                         </div>
                     </div>
 
-                    {/* Card 4: Concluídos */}
                     <div className="rounded-xl bg-white p-6 shadow-sm border border-slate-200">
                         <div className="flex items-center justify-between">
                             <div>
@@ -182,7 +193,7 @@ export function Dashboard() {
                     </div>
                 </div>
 
-                {/* Tabela de Trabalhos */}
+                {/* Tabela */}
                 <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                     <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-3">
                         <div className="relative max-w-sm">

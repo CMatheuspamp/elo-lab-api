@@ -4,7 +4,7 @@ import { api } from '../services/api';
 import {
     ArrowLeft, Building2, CheckCircle, FileText, Loader2, Play,
     Package, Euro, Paperclip, UploadCloud, Trash2, Send, MessageSquare,
-    Calendar, User, AlertCircle
+    Calendar, User, AlertCircle, Printer
 } from 'lucide-react';
 import type { Trabalho } from '../types';
 
@@ -217,6 +217,15 @@ export function JobDetails() {
 
                     {/* Workflow Actions */}
                     <div className="flex gap-3">
+
+                        <button
+                            onClick={() => window.open(`/print/job/${trabalho.id}`, '_blank')}
+                            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 shadow-sm transition"
+                            title="Imprimir Guia de Trabalho"
+                        >
+                            <Printer className="h-5 w-5" />
+                        </button>
+                        
                         {!souLaboratorio && (
                             <div className="flex items-center gap-2 rounded-xl bg-slate-100 px-6 py-3 text-sm font-bold text-slate-600 border border-slate-200">
                                 Status: {trabalho.status}

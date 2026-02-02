@@ -14,6 +14,11 @@ public class Clinica
     [Column("email_contato")]
     public string? EmailContato { get; set; }
 
+    // === NOVO CAMPO (O ÚNICO QUE FALTAVA) ===
+    [Column("telefone")]
+    public string? Telefone { get; set; }
+    // ========================================
+
     [Column("nif")]
     public string? Nif { get; set; }
 

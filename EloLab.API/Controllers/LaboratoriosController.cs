@@ -45,4 +45,28 @@ public class LaboratoriosController : ControllerBase
 
         return CreatedAtAction(nameof(GetLaboratorios), new { id = laboratorio.Id }, laboratorio);
     }
+    
+    // PUT: api/Laboratorios/me
+    [HttpPut("me")]
+    public async Task<IActionResult> AtualizarMeuPerfil([FromBody] DTOs.AtualizarPerfilRequest request)
+    {
+        // 1. Identificar quem está logado
+        var userId = Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value!);
+
+        // 2. Buscar o Laboratório
+        var laboratorio = await _context.Laboratorios.FirstOrDefaultAsync(l => l.UsuarioId == userId);
+        if (laboratorio == null) return NotFound("Perfil de laboratório não encontrado.");
+
+        // 3. Atualizar Dados
+        laboratorio.Nome = request.Nome;
+        laboratorio.EmailContato = request.EmailContato;
+        laboratorio.Telefone = request.Telefone;
+        laboratorio.Nif = request.Nif;
+        laboratorio.Endereco = request.Endereco;
+
+        // 4. Salvar
+        await _context.SaveChangesAsync();
+
+        return Ok(laboratorio);
+    }
 }

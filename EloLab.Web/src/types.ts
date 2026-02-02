@@ -3,20 +3,29 @@
 export interface Laboratorio {
     id: string;
     nome: string;
+    // Campos de contato para Perfil e Impressão
+    emailContato?: string;
+    telefone?: string;
+    nif?: string;      // <--- O erro estava aqui (faltava este)
+    endereco?: string;
 }
 
 export interface Clinica {
     id: string;
     nome: string;
+    // Campos de contato
+    emailContato?: string;
+    telefone?: string;
+    nif?: string;
+    endereco?: string; // <--- Importante para a Guia de Trabalho
 }
 
-// ATUALIZADO: Interface completa para Serviços (incluindo Material)
 export interface Servico {
     id: string;
     nome: string;
-    material: string;       // <--- Novo campo essencial para o Services.tsx
+    material: string;
     precoBase: number;
-    prazoDiasUteis: number; // Agora tratado como número
+    prazoDiasUteis: number;
     descricao?: string;
     ativo: boolean;
 }
@@ -28,30 +37,33 @@ export interface Trabalho {
     corDente?: string;
     dataEntregaPrevista: string;
     valorFinal: number;
-
-    // Status usados no sistema
     status: 'Pendente' | 'EmProducao' | 'Concluido';
 
     laboratorioId: string;
     clinicaId: string;
     descricaoPersonalizada?: string;
 
-    // Objetos expandidos (Preenchidos pelo Backend via Include)
+    // Objetos populados pelo Backend
     laboratorio?: Laboratorio;
     clinica?: Clinica;
     servico?: Servico;
+
     createdAt: string;
 }
 
-// ATUALIZADO: Estrutura alinhada com o retorno do endpoint /Auth/me
 export interface UserSession {
     token?: string;
-    tipo: 'Laboratorio' | 'Clinica'; // Tipagem estrita ajuda a evitar erros de string
-    id: string; // ID genérico
+    tipo: 'Laboratorio' | 'Clinica';
+    id: string;
     meusDados: {
-        id: string;        // ID Específico da Tabela (Clinica ou Lab)
-        usuarioId: string; // ID do Login (Auth)
+        id: string;
+        usuarioId: string;
         nome: string;
         email: string;
+        // Campos de Perfil
+        emailContato?: string;
+        telefone?: string;
+        nif?: string;
+        endereco?: string;
     }
 }

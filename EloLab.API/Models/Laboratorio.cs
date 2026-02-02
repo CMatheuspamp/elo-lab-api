@@ -28,4 +28,18 @@ public class Laboratorio
     
     [Column("usuario_id")]
     public Guid? UsuarioId { get; set; }
+
+    // === NOVOS CAMPOS PARA O PERFIL ===
+    [Column("email_contato")]
+    public string? EmailContato { get; set; }
+
+    [Column("telefone")]
+    public string? Telefone { get; set; }
+
+    [Column("nif")]
+    public string? Nif { get; set; }
+
+    [Column("endereco")]
+    public string? Endereco { get; set; }
+    // ==================================
 }

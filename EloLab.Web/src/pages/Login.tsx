@@ -14,10 +14,31 @@ export function Login() {
         setLoading(true);
 
         try {
+            // 1. Efetuar Login
             const response = await api.post('/Auth/login', { email, password });
             const { token } = response.data;
+
+            // 2. Salvar Token
             localStorage.setItem('elolab_token', token);
-            navigate('/dashboard');
+
+            // 3. Garantir que o token está no header para a próxima requisição imediata
+            api.defaults.headers.Authorization = `Bearer ${token}`;
+
+            // 4. Verificar o Tipo de Usuário para redirecionamento correto
+            try {
+                const meResponse = await api.get('/Auth/me');
+                const { tipo } = meResponse.data;
+
+                if (tipo === 'Clinica') {
+                    navigate('/parceiros'); // Home da Clínica
+                } else {
+                    navigate('/dashboard'); // Home do Laboratório
+                }
+            } catch (err) {
+                // Se falhar ao pegar o perfil, manda pro dashboard por segurança
+                navigate('/dashboard');
+            }
+
         } catch (error) {
             alert('Falha na autenticação. Verifique suas credenciais.');
         } finally {

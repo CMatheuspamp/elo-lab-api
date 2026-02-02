@@ -87,4 +87,30 @@ public class ClinicasController : ControllerBase
 
         return Ok(clinicas);
     }
+    
+    // PUT: api/Clinicas/me
+    [HttpPut("me")]
+    public async Task<IActionResult> AtualizarMeuPerfil([FromBody] DTOs.AtualizarPerfilRequest request)
+    {
+        // 1. Identificar quem está logado
+        var userId = Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value!);
+
+        // 2. Buscar a Clínica
+        var clinica = await _context.Clinicas.FirstOrDefaultAsync(c => c.UsuarioId == userId);
+        if (clinica == null) return NotFound("Perfil de clínica não encontrado.");
+
+        // 3. Atualizar Dados
+        clinica.Nome = request.Nome;
+        clinica.EmailContato = request.EmailContato;
+        // Se a sua tabela Clinicas não tiver 'Telefone' na Migration, remova a linha abaixo.
+        // Mas se tiver (como adicionamos no Laboratorio), mantenha.
+        // clinica.Telefone = request.Telefone; 
+        clinica.Nif = request.Nif;
+        clinica.Endereco = request.Endereco;
+
+        // 4. Salvar
+        await _context.SaveChangesAsync();
+
+        return Ok(clinica);
+    }
 }
