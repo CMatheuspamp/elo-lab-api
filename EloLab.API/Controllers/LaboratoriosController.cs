@@ -1,5 +1,6 @@
 using EloLab.API.Data;
 using EloLab.API.Models;
+using EloLab.API.DTOs;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
@@ -48,25 +49,70 @@ public class LaboratoriosController : ControllerBase
     
     // PUT: api/Laboratorios/me
     [HttpPut("me")]
-    public async Task<IActionResult> AtualizarMeuPerfil([FromBody] DTOs.AtualizarPerfilRequest request)
+    public async Task<IActionResult> AtualizarMeuPerfil([FromBody] AtualizarPerfilRequest request)
     {
-        // 1. Identificar quem está logado
-        var userId = Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value!);
+        var labIdClaim = User.FindFirst("laboratorioId")?.Value;
+        if (labIdClaim == null) return Unauthorized();
 
-        // 2. Buscar o Laboratório
-        var laboratorio = await _context.Laboratorios.FirstOrDefaultAsync(l => l.UsuarioId == userId);
-        if (laboratorio == null) return NotFound("Perfil de laboratório não encontrado.");
+        var lab = await _context.Laboratorios.FindAsync(Guid.Parse(labIdClaim));
+        if (lab == null) return NotFound();
 
-        // 3. Atualizar Dados
-        laboratorio.Nome = request.Nome;
-        laboratorio.EmailContato = request.EmailContato;
-        laboratorio.Telefone = request.Telefone;
-        laboratorio.Nif = request.Nif;
-        laboratorio.Endereco = request.Endereco;
+        // Atualiza dados básicos
+        lab.Nome = request.Nome;
+        lab.EmailContato = request.EmailContato;
+        lab.Telefone = request.Telefone;
+        lab.Endereco = request.Endereco;
+        
+        // === ATUALIZA APARÊNCIA ===
+        // Se vier nulo, mantém o que estava. Se vier vazio, volta pro padrão.
+        if (!string.IsNullOrEmpty(request.CorPrimaria)) 
+            lab.CorPrimaria = request.CorPrimaria;
+            
+        if (!string.IsNullOrEmpty(request.LogoUrl)) 
+            lab.LogoUrl = request.LogoUrl;
+        // ==========================
 
-        // 4. Salvar
         await _context.SaveChangesAsync();
 
-        return Ok(laboratorio);
+        return Ok(lab);
+    }
+    
+    // POST: api/Laboratorios/logo
+    [HttpPost("logo")]
+    public async Task<IActionResult> UploadLogo(IFormFile arquivo)
+    {
+        // 1. Validações Básicas
+        if (arquivo == null || arquivo.Length == 0)
+            return BadRequest("Nenhum arquivo enviado.");
+
+        var extensao = Path.GetExtension(arquivo.FileName).ToLower();
+        var permitidos = new[] { ".jpg", ".jpeg", ".png", ".webp" }; // Apenas imagens
+        
+        if (!permitidos.Contains(extensao))
+            return BadRequest("Formato inválido. Use JPG, PNG ou WEBP.");
+
+        // 2. Identificar o Lab (para dar nome ao arquivo)
+        var labIdClaim = User.FindFirst("laboratorioId")?.Value;
+        if (string.IsNullOrEmpty(labIdClaim)) return Unauthorized();
+
+        // 3. Preparar Pasta
+        var pastaLogos = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "logos");
+        if (!Directory.Exists(pastaLogos)) Directory.CreateDirectory(pastaLogos);
+
+        // 4. Salvar Arquivo (Nome = ID do Lab + Extensão, assim substitui a antiga automaticamente)
+        var nomeArquivo = $"{labIdClaim}_logo{extensao}";
+        var caminhoCompleto = Path.Combine(pastaLogos, nomeArquivo);
+
+        using (var stream = new FileStream(caminhoCompleto, FileMode.Create))
+        {
+            await arquivo.CopyToAsync(stream);
+        }
+
+        // 5. Retornar a URL Pública
+        // Nota: O "/logos/" deve bater com a configuração de arquivos estáticos no Program.cs
+        // Se ainda não mapeamos, vamos usar a pasta uploads mesmo ou configurar esta.
+        var urlPublica = $"/logos/{nomeArquivo}";
+
+        return Ok(new { url = urlPublica });
     }
 }

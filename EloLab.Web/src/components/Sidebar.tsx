@@ -3,21 +3,34 @@ import {
     LayoutDashboard, PlusCircle, Building2,
     Tag, UserCircle, LogOut
 } from 'lucide-react';
+import { api } from '../services/api';
 
 export function Sidebar() {
     const navigate = useNavigate();
     const location = useLocation();
 
-    // Lê o tipo que salvamos no Login
+    // Recupera dados
     const userType = localStorage.getItem('elolab_user_type');
 
+    // === "WHITE LABEL" LÓGICA ===
+    const primaryColor = localStorage.getItem('elolab_user_color') || '#2563EB';
+    const logoUrl = localStorage.getItem('elolab_user_logo');
+    // ============================
+
     const isActive = (path: string) => location.pathname === path;
+
+    const getFullUrl = (url: string) => {
+        if (!url) return '';
+        if (url.startsWith('http')) return url;
+        const baseUrl = api.defaults.baseURL?.replace(/\/api\/?$/, '') || 'http://localhost:5036';
+        const cleanPath = url.startsWith('/') ? url : `/${url}`;
+        return `${baseUrl}${cleanPath}`;
+    };
 
     const menuItems = [
         { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', show: true },
         { label: 'Novo Pedido', icon: PlusCircle, path: '/trabalhos/novo', show: true },
         { label: 'Parceiros', icon: Building2, path: '/parceiros', show: true },
-        // Só mostra Serviços se for Laboratório ou se o tipo ainda não estiver carregado (previne sumir erradamente)
         { label: 'Serviços & Preços', icon: Tag, path: '/servicos', show: userType === 'Laboratorio' },
         { label: 'Meu Perfil', icon: UserCircle, path: '/perfil', show: true },
     ];
@@ -29,33 +42,58 @@ export function Sidebar() {
 
     return (
         <aside className="fixed left-0 top-0 h-screen w-64 border-r border-slate-200 bg-white flex flex-col z-20">
-            {/* Logo */}
-            <div className="flex h-20 items-center gap-3 px-8 border-b border-slate-100">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 font-bold text-white shadow-lg shadow-blue-200">
-                    E
-                </div>
-                <span className="text-xl font-bold text-slate-900 tracking-tight">EloLab</span>
+            {/* LOGO AREA MAIOR 
+               - h-40 (160px) dá bastante espaço vertical
+               - px-6 dá margem lateral
+            */}
+            <div className="flex h-40 flex-col items-center justify-center border-b border-slate-100 px-6 py-6">
+                {logoUrl ? (
+                    <img
+                        src={getFullUrl(logoUrl)}
+                        alt="Logo"
+                        // Logo muito maior (até 112px de altura) e larga
+                        className="max-h-28 w-auto max-w-full object-contain drop-shadow-sm transition-transform hover:scale-105"
+                    />
+                ) : (
+                    <div className="flex flex-col items-center gap-3">
+                        <div
+                            className="flex h-12 w-12 items-center justify-center rounded-xl font-bold text-white shadow-lg text-2xl"
+                            style={{ backgroundColor: primaryColor, boxShadow: `0 8px 20px ${primaryColor}50` }}
+                        >
+                            E
+                        </div>
+                        <span className="text-xl font-bold text-slate-900 tracking-tight">EloLab</span>
+                    </div>
+                )}
             </div>
 
-            {/* Menu */}
-            <nav className="flex-1 space-y-1 p-4 py-6">
-                {menuItems.filter(i => i.show).map((item) => (
-                    <button
-                        key={item.path}
-                        onClick={() => navigate(item.path)}
-                        className={`group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200
-                            ${isActive(item.path)
-                            ? 'bg-blue-50 text-blue-700 shadow-sm'
-                            : 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'
-                        }`}
-                    >
-                        <item.icon className={`h-5 w-5 transition-colors ${isActive(item.path) ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
-                        {item.label}
-                    </button>
-                ))}
+            {/* Menu Items */}
+            <nav className="flex-1 space-y-1.5 p-4 py-6 overflow-y-auto custom-scrollbar">
+                {menuItems.filter(i => i.show).map((item) => {
+                    const active = isActive(item.path);
+                    return (
+                        <button
+                            key={item.path}
+                            onClick={() => navigate(item.path)}
+                            className={`group flex w-full items-center gap-3 rounded-xl px-4 py-3.5 text-sm font-medium transition-all duration-200
+                                ${!active && 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}
+                            style={active ? {
+                                backgroundColor: `${primaryColor}15`,
+                                color: primaryColor,
+                                fontWeight: '700'
+                            } : {}}
+                        >
+                            <item.icon
+                                className={`h-5 w-5 transition-colors`}
+                                style={active ? { color: primaryColor } : {}}
+                            />
+                            {item.label}
+                        </button>
+                    );
+                })}
             </nav>
 
-            {/* Logout */}
+            {/* Footer */}
             <div className="p-4 border-t border-slate-100">
                 <button
                     onClick={handleLogout}

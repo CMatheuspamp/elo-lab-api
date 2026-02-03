@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { api } from '../services/api'; // <--- Importante: estamos a usar a config do axios aqui
+import { api } from '../services/api';
 import {
     ArrowLeft, Building2, CheckCircle, FileText, Loader2, Play,
     Package, Euro, Paperclip, UploadCloud, Trash2, Send, MessageSquare,
@@ -30,26 +30,22 @@ export function JobDetails() {
     const { id } = useParams();
     const navigate = useNavigate();
 
+    // === WHITE LABEL ===
+    const primaryColor = localStorage.getItem('elolab_user_color') || '#2563EB';
+    // ===================
+
     // =========================================================================
     // CORREÇÃO DA PORTA (DINÂMICA)
     // =========================================================================
-    // Em vez de hardcoded 'http://localhost:5038', lemos do api.ts
     const getBaseUrl = () => {
-        // Se a baseURL for "http://localhost:5036/api", removemos o "/api"
-        // para ficar apenas a raiz "http://localhost:5036" onde estão os uploads.
         const baseURL = api.defaults.baseURL || '';
         return baseURL.replace(/\/api\/?$/, '');
     };
 
-    // Função auxiliar para corrigir URL
     function getFullUrl(url: string) {
         if (!url) return '';
-        if (url.startsWith('http')) return url; // Se já tiver http, usa direto
-
-        // Garante que a URL relativa começa com /
+        if (url.startsWith('http')) return url;
         const cleanPath = url.startsWith('/') ? url : `/${url}`;
-
-        // Junta a raiz (porta 5036) com o caminho (/uploads/arquivo.stl)
         return `${getBaseUrl()}${cleanPath}`;
     }
     // =========================================================================
@@ -122,7 +118,7 @@ export function JobDetails() {
                 );
 
                 if (first3D) {
-                    setStlParaVisualizar(getFullUrl(first3D.url)); // <--- Usa a função corrigida aqui
+                    setStlParaVisualizar(getFullUrl(first3D.url));
                 } else if (workResponse.data.arquivoUrl && (workResponse.data.arquivoUrl.endsWith('.stl') || workResponse.data.arquivoUrl.endsWith('.obj'))) {
                     setStlParaVisualizar(getFullUrl(workResponse.data.arquivoUrl));
                 }
@@ -164,10 +160,10 @@ export function JobDetails() {
         }
     }
 
-    // Função para ícones de arquivo
+    // Função para ícones de arquivo com cor da marca
     function getFileIcon(nome: string) {
         const ext = nome.split('.').pop()?.toLowerCase();
-        if (['stl', 'obj', 'ply'].includes(ext || '')) return <FileBox className="h-5 w-5 text-blue-600" />;
+        if (['stl', 'obj', 'ply'].includes(ext || '')) return <FileBox className="h-5 w-5" style={{ color: primaryColor }} />;
         if (['jpg', 'png', 'jpeg'].includes(ext || '')) return <ImageIcon className="h-5 w-5 text-purple-600" />;
         return <File className="h-5 w-5 text-slate-400" />;
     }
@@ -187,10 +183,7 @@ export function JobDetails() {
             const filesResponse = await api.get(`/Anexos/trabalho/${trabalho.id}`);
             setAnexos(filesResponse.data);
 
-            // Se for 3D, carrega automaticamente
             if(file.name.toLowerCase().endsWith('.stl') || file.name.toLowerCase().endsWith('.obj')) {
-                // Como não temos a URL exata do retorno do upload (o backend retorna o objeto, mas o get já atualizou),
-                // pegamos o último da lista nova
                 const novoAnexo = filesResponse.data.find((a: Anexo) => a.nomeArquivo === file.name);
                 if (novoAnexo) setStlParaVisualizar(getFullUrl(novoAnexo.url));
             }
@@ -266,7 +259,10 @@ export function JobDetails() {
                             </span>
                         </div>
                         <div className="mt-2 flex items-center gap-4 text-slate-500">
-                            <span className="flex items-center gap-1.5"><Building2 className="h-4 w-4 text-blue-500"/> {trabalho.clinica?.nome || 'Clínica Parceira'}</span>
+                            <span className="flex items-center gap-1.5">
+                                <Building2 className="h-4 w-4" style={{ color: primaryColor }}/>
+                                {trabalho.clinica?.nome || 'Clínica Parceira'}
+                            </span>
                             <span className="hidden md:inline text-slate-300">|</span>
                             <span className="flex items-center gap-1.5"><User className="h-4 w-4"/> {trabalho.laboratorio?.nome || 'Meu Lab'}</span>
                         </div>
@@ -289,11 +285,17 @@ export function JobDetails() {
                         )}
 
                         {souLaboratorio && isPendente && (
-                            <button onClick={() => changeStatus('EmProducao')} disabled={updating} className="flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-bold text-white hover:bg-blue-700 shadow-lg shadow-blue-200 transition disabled:opacity-50">
+                            <button
+                                onClick={() => changeStatus('EmProducao')}
+                                disabled={updating}
+                                className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5 disabled:opacity-50"
+                                style={{ backgroundColor: primaryColor, boxShadow: `0 4px 14px ${primaryColor}40` }}
+                            >
                                 {updating ? <Loader2 className="animate-spin h-5 w-5"/> : <Play className="h-5 w-5" />} Iniciar Produção
                             </button>
                         )}
                         {souLaboratorio && isProducao && (
+                            // Mantemos verde por ser "Sucesso/Conclusão", mas com estilo consistente
                             <button onClick={() => changeStatus('Concluido')} disabled={updating} className="flex items-center gap-2 rounded-xl bg-green-600 px-6 py-3 text-sm font-bold text-white hover:bg-green-700 shadow-lg shadow-green-200 transition disabled:opacity-50">
                                 {updating ? <Loader2 className="animate-spin h-5 w-5"/> : <CheckCircle className="h-5 w-5" />} Concluir Trabalho
                             </button>
@@ -374,6 +376,7 @@ export function JobDetails() {
                                         disabled={uploading}
                                         onClick={() => fileInputRef.current?.click()}
                                         className="flex items-center gap-2 rounded-lg bg-indigo-50 px-4 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-100 transition disabled:opacity-50"
+                                        style={{ color: primaryColor, backgroundColor: `${primaryColor}10` }}
                                     >
                                         {uploading ? <Loader2 className="h-3 w-3 animate-spin"/> : <UploadCloud className="h-3 w-3" />}
                                         Upload
@@ -409,7 +412,10 @@ export function JobDetails() {
                                                     {is3D && (
                                                         <button
                                                             onClick={() => setStlParaVisualizar(getFullUrl(anexo.url))}
-                                                            className="rounded-lg bg-white p-2 text-slate-500 shadow-sm border border-slate-100 hover:text-blue-600 hover:border-blue-200 transition"
+                                                            className="rounded-lg bg-white p-2 text-slate-500 shadow-sm border border-slate-100 transition"
+                                                            style={{ borderColor: 'transparent' }}
+                                                            onMouseEnter={(e) => { e.currentTarget.style.color = primaryColor; e.currentTarget.style.borderColor = primaryColor; }}
+                                                            onMouseLeave={(e) => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.borderColor = '#e2e8f0'; }}
                                                             title="Visualizar 3D"
                                                         >
                                                             <Eye className="h-4 w-4" />
@@ -478,7 +484,7 @@ export function JobDetails() {
                         <div className="flex h-[500px] flex-col rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                             <div className="border-b border-slate-100 bg-slate-50/80 p-4 backdrop-blur-sm">
                                 <h3 className="flex items-center gap-2 text-sm font-bold text-slate-700">
-                                    <MessageSquare className="h-4 w-4 text-blue-500" />
+                                    <MessageSquare className="h-4 w-4" style={{ color: primaryColor }} />
                                     Chat do Pedido
                                 </h3>
                             </div>
@@ -494,9 +500,12 @@ export function JobDetails() {
                                     const isMe = msg.remetenteId === meuId;
                                     return (
                                         <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                            <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
-                                                isMe ? 'bg-blue-600 text-white rounded-tr-sm' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-sm'
-                                            }`}>
+                                            <div
+                                                className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
+                                                    isMe ? 'text-white rounded-tr-sm' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-sm'
+                                                }`}
+                                                style={isMe ? { backgroundColor: primaryColor } : {}}
+                                            >
                                                 <p>{msg.texto}</p>
                                             </div>
                                             <span className="mt-1 px-1 text-[10px] font-medium text-slate-400">
@@ -515,12 +524,15 @@ export function JobDetails() {
                                         value={novoTexto}
                                         onChange={e => setNovoTexto(e.target.value)}
                                         placeholder="Digite uma mensagem..."
-                                        className="flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none focus:border-blue-500 focus:bg-white transition placeholder:text-slate-400"
+                                        className="flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition placeholder:text-slate-400"
+                                        onFocus={(e) => e.target.style.borderColor = primaryColor}
+                                        onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
                                     />
                                     <button
                                         type="submit"
                                         disabled={sendingMsg || !novoTexto.trim()}
-                                        className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition shadow-sm hover:shadow-md"
+                                        className="flex h-10 w-10 items-center justify-center rounded-full text-white disabled:opacity-50 transition shadow-sm hover:shadow-md"
+                                        style={{ backgroundColor: primaryColor }}
                                     >
                                         {sendingMsg ? <Loader2 className="h-4 w-4 animate-spin"/> : <Send className="h-4 w-4 ml-0.5" />}
                                     </button>

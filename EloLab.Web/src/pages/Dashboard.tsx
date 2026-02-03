@@ -13,7 +13,12 @@ export function Dashboard() {
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
 
-    // === ESTADOS PARA FILTROS ===
+    // === WHITE LABEL ===
+    const primaryColor = localStorage.getItem('elolab_user_color') || '#2563EB';
+    const logoUrl = localStorage.getItem('elolab_user_logo');
+    // ===================
+
+    // Filtros
     const [parceirosParaFiltro, setParceirosParaFiltro] = useState<any[]>([]);
     const [busca, setBusca] = useState('');
     const [filtroStatus, setFiltroStatus] = useState('Todos');
@@ -22,6 +27,15 @@ export function Dashboard() {
 
     const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('pt-BR');
     const formatCurrency = (value: number) => new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
+
+    // Helper URL Imagem
+    const getFullUrl = (url: string) => {
+        if (!url) return '';
+        if (url.startsWith('http')) return url;
+        const baseUrl = api.defaults.baseURL?.replace(/\/api\/?$/, '') || 'http://localhost:5036';
+        const cleanPath = url.startsWith('/') ? url : `/${url}`;
+        return `${baseUrl}${cleanPath}`;
+    };
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -47,14 +61,13 @@ export function Dashboard() {
                 setParceirosParaFiltro(parceirosRes.data);
 
             } catch (error) {
-                // Se der erro de auth, o layout ou interceptor trata, ou mandamos pro login
                 console.error(error);
             } finally {
                 setLoading(false);
             }
         }
         loadData();
-    }, []); // removido navigate da dependência para evitar loop se algo mudar
+    }, []);
 
     function limparFiltros() {
         setBusca('');
@@ -65,6 +78,7 @@ export function Dashboard() {
 
     const isLab = user?.tipo === 'Laboratorio';
 
+    // Lógica de Filtro
     const trabalhosFiltrados = trabalhos.filter(t => {
         const textoMatch =
             t.pacienteNome.toLowerCase().includes(busca.toLowerCase()) ||
@@ -86,56 +100,87 @@ export function Dashboard() {
     const concluidos = trabalhos.filter(t => t.status === 'Concluido').length;
     const totalValor = trabalhos.reduce((acc, t) => acc + t.valorFinal, 0);
 
-    if (loading || !user) {
-        return <div className="p-8 text-slate-400">Carregando dashboard...</div>;
-    }
+    if (loading || !user) return <div className="p-8 text-slate-400">Carregando...</div>;
 
     return (
         <div className="p-8 space-y-8">
 
-            {/* Novo Cabeçalho (Sem Menu) */}
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-                <div>
-                    <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
-                    <p className="text-slate-500">Bem-vindo de volta, {user.meusDados.nome}</p>
+            {/* === BANNER INSTITUCIONAL (VERSÃO LIMPA/BRANCA) === */}
+            <div className="relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-100">
+                <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
+                    <div className="flex items-center gap-6">
+                        {logoUrl ? (
+                            <img
+                                src={getFullUrl(logoUrl)}
+                                alt="Logo"
+                                className="h-20 w-auto object-contain drop-shadow-sm"
+                            />
+                        ) : (
+                            <div className="h-20 w-20 rounded-2xl flex items-center justify-center text-white text-3xl font-bold shadow-lg shadow-slate-200"
+                                 style={{ backgroundColor: primaryColor }}>
+                                {user.meusDados.nome.charAt(0)}
+                            </div>
+                        )}
+
+                        <div>
+                            <h2 className="text-3xl font-bold text-slate-900 leading-tight">
+                                {user.meusDados.nome}
+                            </h2>
+                            <div className="flex items-center gap-2 mt-1">
+                                <span className="inline-block h-2 w-2 rounded-full animate-pulse bg-green-500"></span>
+                                <p className="text-slate-500 font-medium text-sm uppercase tracking-wide">
+                                    {isLab ? 'Ambiente de Gestão & Produção' : 'Portal do Parceiro'}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={() => navigate('/trabalhos/novo')}
+                        className="group flex items-center gap-3 rounded-2xl px-8 py-4 text-base font-bold text-white shadow-xl transition-all hover:-translate-y-1 hover:shadow-2xl"
+                        style={{ backgroundColor: primaryColor, boxShadow: `0 10px 30px -10px ${primaryColor}` }}
+                    >
+                        <div className="rounded-full bg-white/20 p-1 group-hover:bg-white/30 transition">
+                            <Plus className="h-6 w-6" />
+                        </div>
+                        Novo Pedido
+                    </button>
                 </div>
-                <button
-                    onClick={() => navigate('/trabalhos/novo')}
-                    className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-blue-200 transition hover:bg-blue-700 hover:-translate-y-0.5"
-                >
-                    <Plus className="h-5 w-5" /> Novo Pedido
-                </button>
+                {/* Removi o elemento decorativo de fundo para ficar branco puro */}
             </div>
 
-            {/* Cards */}
+            {/* Cards de Estatística */}
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                <div className="relative overflow-hidden rounded-2xl bg-white p-6 shadow-sm border border-slate-100">
+                <div className="relative overflow-hidden rounded-2xl bg-white p-6 shadow-sm border border-slate-100 group hover:border-slate-200 transition">
                     <div className="flex items-center justify-between">
                         <div>
-                            <p className="text-xs font-bold uppercase text-slate-400">{isLab ? 'Faturamento Total' : 'Total em Pedidos'}</p>
+                            <p className="text-xs font-bold uppercase text-slate-400">{isLab ? 'Faturamento' : 'Total Pedidos'}</p>
                             <h3 className="mt-2 text-2xl font-black text-slate-900">{formatCurrency(totalValor)}</h3>
                         </div>
-                        <div className="rounded-xl bg-blue-50 p-3 text-blue-600">
+                        <div className="rounded-xl p-3" style={{ backgroundColor: `${primaryColor}15`, color: primaryColor }}>
                             {isLab ? <TrendingUp className="h-6 w-6" /> : <DollarSign className="h-6 w-6" />}
                         </div>
                     </div>
+                    {/* Barra de destaque na base */}
+                    <div className="absolute bottom-0 left-0 h-1 w-full" style={{ backgroundColor: primaryColor }}></div>
                 </div>
+
                 <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100">
                     <div className="flex items-center justify-between">
                         <div><p className="text-xs font-bold uppercase text-slate-400">{isLab ? 'Novos' : 'Aguardando'}</p><h3 className="mt-2 text-2xl font-black text-slate-900">{pendentes}</h3></div>
-                        <div className="rounded-xl bg-orange-50 p-3 text-orange-600"><AlertCircle className="h-6 w-6" /></div>
+                        <div className="rounded-xl bg-orange-50 p-3 text-orange-500"><AlertCircle className="h-6 w-6" /></div>
                     </div>
                 </div>
                 <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100">
                     <div className="flex items-center justify-between">
                         <div><p className="text-xs font-bold uppercase text-slate-400">Em Produção</p><h3 className="mt-2 text-2xl font-black text-slate-900">{emProducao}</h3></div>
-                        <div className="rounded-xl bg-purple-50 p-3 text-purple-600"><Clock className="h-6 w-6" /></div>
+                        <div className="rounded-xl bg-purple-50 p-3 text-purple-500"><Clock className="h-6 w-6" /></div>
                     </div>
                 </div>
                 <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100">
                     <div className="flex items-center justify-between">
                         <div><p className="text-xs font-bold uppercase text-slate-400">{isLab ? 'Concluídos' : 'Prontos'}</p><h3 className="mt-2 text-2xl font-black text-slate-900">{concluidos}</h3></div>
-                        <div className="rounded-xl bg-emerald-50 p-3 text-emerald-600"><CheckCircle className="h-6 w-6" /></div>
+                        <div className="rounded-xl bg-emerald-50 p-3 text-emerald-500"><CheckCircle className="h-6 w-6" /></div>
                     </div>
                 </div>
             </div>
@@ -146,7 +191,7 @@ export function Dashboard() {
                     <h3 className="flex items-center gap-2 text-sm font-bold text-slate-700">
                         <Filter className="h-4 w-4" /> Filtros Avançados
                     </h3>
-                    <button onClick={limparFiltros} className="text-xs font-medium text-slate-400 hover:text-slate-600 hover:underline">
+                    <button onClick={limparFiltros} className="text-xs font-medium hover:underline" style={{ color: primaryColor }}>
                         Limpar Filtros
                     </button>
                 </div>
@@ -157,13 +202,16 @@ export function Dashboard() {
                         <div className="relative">
                             <Search className="absolute top-3 left-3 h-4 w-4 text-slate-400" />
                             <input type="text" value={busca} onChange={e => setBusca(e.target.value)}
-                                   className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white transition"
+                                   className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm font-medium outline-none focus:bg-white transition"
+                                   style={{ borderColor: 'transparent', boxShadow: '0 0 0 1px #e2e8f0' }}
+                                   onFocus={(e) => e.target.style.boxShadow = `0 0 0 2px ${primaryColor}`}
+                                   onBlur={(e) => e.target.style.boxShadow = '0 0 0 1px #e2e8f0'}
                                    placeholder="Paciente, Serviço ou ID..." />
                         </div>
                     </div>
                     <div>
                         <label className="mb-1.5 block text-xs font-bold text-slate-400 uppercase">Status</label>
-                        <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white transition">
+                        <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-sm font-medium outline-none focus:bg-white transition">
                             <option value="Todos">Todos</option>
                             <option value="Pendente">Pendente</option>
                             <option value="EmProducao">Em Produção</option>
@@ -172,7 +220,7 @@ export function Dashboard() {
                     </div>
                     <div>
                         <label className="mb-1.5 block text-xs font-bold text-slate-400 uppercase">{isLab ? 'Clínica' : 'Laboratório'}</label>
-                        <select value={filtroParceiro} onChange={e => setFiltroParceiro(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white transition">
+                        <select value={filtroParceiro} onChange={e => setFiltroParceiro(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-sm font-medium outline-none focus:bg-white transition">
                             <option value="Todos">Todos</option>
                             {parceirosParaFiltro.map((p: any) => (
                                 <option key={p.id} value={p.id}>{p.nome}</option>
@@ -182,7 +230,7 @@ export function Dashboard() {
                     <div>
                         <label className="mb-1.5 block text-xs font-bold text-slate-400 uppercase">Mês</label>
                         <input type="month" value={filtroMes} onChange={e => setFiltroMes(e.target.value)}
-                               className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white transition"
+                               className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-sm font-medium outline-none focus:bg-white transition"
                         />
                     </div>
                 </div>
@@ -192,7 +240,7 @@ export function Dashboard() {
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="border-b border-slate-100 bg-slate-50/50 px-6 py-4 flex justify-between items-center">
                     <span className="text-xs font-bold uppercase text-slate-500">Resultados da Busca</span>
-                    <span className="text-xs font-semibold text-slate-400">{trabalhosFiltrados.length} encontrados</span>
+                    <span className="text-xs font-semibold text-slate-400">{trabalhosFiltrados.length} pedidos encontrados</span>
                 </div>
 
                 {trabalhosFiltrados.length === 0 ? (
@@ -214,7 +262,7 @@ export function Dashboard() {
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                         {trabalhosFiltrados.map((trabalho) => (
-                            <tr key={trabalho.id} className="hover:bg-blue-50/30 transition cursor-pointer" onClick={() => navigate(`/trabalhos/${trabalho.id}`)}>
+                            <tr key={trabalho.id} className="hover:bg-slate-50 transition cursor-pointer group" onClick={() => navigate(`/trabalhos/${trabalho.id}`)}>
                                 <td className="px-6 py-4">
                                     <span className="font-bold text-slate-900 block">{trabalho.pacienteNome}</span>
                                     <span className="text-xs text-slate-400 font-mono">#{trabalho.id.substring(0, 8)}</span>
@@ -225,7 +273,7 @@ export function Dashboard() {
                                 </td>
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-2">
-                                        <div className="h-6 w-6 rounded-full bg-slate-100 flex items-center justify-center text-xs font-bold text-slate-500">
+                                        <div className="h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: primaryColor }}>
                                             {(isLab ? trabalho.clinica?.nome : trabalho.laboratorio?.nome)?.charAt(0)}
                                         </div>
                                         <span className="font-medium">{isLab ? trabalho.clinica?.nome : trabalho.laboratorio?.nome}</span>
@@ -242,7 +290,7 @@ export function Dashboard() {
                                     <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold ${getStatusColor(trabalho.status)}`}>{trabalho.status}</span>
                                 </td>
                                 <td className="px-6 py-4 text-right">
-                                    <ArrowRight className="h-4 w-4 text-slate-300 ml-auto" />
+                                    <ArrowRight className="h-4 w-4 text-slate-300 ml-auto group-hover:text-slate-600 transition" />
                                 </td>
                             </tr>
                         ))}

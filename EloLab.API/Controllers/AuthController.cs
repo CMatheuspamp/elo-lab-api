@@ -5,7 +5,7 @@ using EloLab.API.Data;
 using EloLab.API.DTOs;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens; // Para SecurityTokenDescriptor
+using Microsoft.IdentityModel.Tokens;
 
 namespace EloLab.API.Controllers;
 
@@ -29,33 +29,38 @@ public class AuthController : ControllerBase
     {
         try
         {
-            // 1. Autenticar no Supabase (verifica se a senha bate)
+            // 1. Autenticar no Supabase
             var session = await _supabaseClient.Auth.SignIn(request.Email, request.Password);
 
             if (session == null || session.User == null)
                 return BadRequest(new { erro = "Credenciais inválidas." });
 
-            // ID do usuário no Supabase
             if (!Guid.TryParse(session.User.Id, out var userId))
                 return BadRequest(new { erro = "ID de usuário inválido." });
 
-            // 2. Descobrir QUEM é este usuário nas nossas tabelas
+            // 2. Descobrir QUEM é este usuário
             string tipo = "Desconhecido";
-            string nome = session.User.Email; // Nome padrão caso não tenha perfil
+            string nome = session.User.Email;
             Guid? laboratorioId = null;
             Guid? clinicaId = null;
+            
+            // Variáveis de aparência
+            string cor = "#2563EB"; 
+            string? logo = null;
 
-            // Procura na tabela de Laboratórios
             var lab = await _context.Laboratorios.FirstOrDefaultAsync(l => l.UsuarioId == userId);
             if (lab != null)
             {
                 tipo = "Laboratorio";
                 nome = lab.Nome;
                 laboratorioId = lab.Id;
+                
+                // Carrega a aparência do Laboratório
+                cor = lab.CorPrimaria;
+                logo = lab.LogoUrl;
             }
             else
             {
-                // Se não for Lab, procura na tabela de Clínicas
                 var clinica = await _context.Clinicas.FirstOrDefaultAsync(c => c.UsuarioId == userId);
                 if (clinica != null)
                 {
@@ -65,7 +70,7 @@ public class AuthController : ControllerBase
                 }
             }
 
-            // 3. Criar o "Token Inteligente" (Com os IDs lá dentro)
+            // 3. Criar Token
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
@@ -73,11 +78,9 @@ public class AuthController : ControllerBase
                 new Claim("tipo", tipo)
             };
 
-            // Aqui está o segredo: Colocamos o ID do Lab/Clinica direto no token
             if (laboratorioId != null) claims.Add(new Claim("laboratorioId", laboratorioId.ToString()));
             if (clinicaId != null) claims.Add(new Claim("clinicaId", clinicaId.ToString()));
 
-            // Assinar o token
             var jwtSecret = _configuration["SupabaseSettings:JwtSecret"];
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -85,7 +88,7 @@ public class AuthController : ControllerBase
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(claims),
-                Expires = DateTime.UtcNow.AddDays(7), // Dura 7 dias
+                Expires = DateTime.UtcNow.AddDays(7),
                 SigningCredentials = creds,
                 Issuer = $"{_configuration["SupabaseSettings:Url"]}/auth/v1",
                 Audience = "authenticated"
@@ -95,24 +98,26 @@ public class AuthController : ControllerBase
             var token = tokenHandler.CreateToken(tokenDescriptor);
             var jwtString = tokenHandler.WriteToken(token);
 
-            // 4. Retornar tudo pronto para o Frontend
+            // 4. Retorno turbinado com aparência
             return Ok(new 
             { 
                 token = jwtString,
                 usuarioId = userId,
                 email = session.User.Email,
                 tipo = tipo,
-                nome = nome
+                nome = nome,
+                // NOVOS CAMPOS PARA O FRONTEND
+                corPrimaria = cor,
+                logoUrl = logo
             });
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Erro Login: {ex.Message}");
-            return BadRequest(new { erro = "Falha no login. Verifique as credenciais." });
+            return BadRequest(new { erro = "Falha no login." });
         }
     }
     
-    // Mantemos o /me para compatibilidade, mas agora ele é mais robusto
     [HttpGet("me")]
     [Microsoft.AspNetCore.Authorization.Authorize] 
     public async Task<IActionResult> GetMe()

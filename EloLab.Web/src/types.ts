@@ -3,11 +3,15 @@
 export interface Laboratorio {
     id: string;
     nome: string;
-    // Campos de contato para Perfil e Impressão
+    // Campos de contato
     emailContato?: string;
     telefone?: string;
-    nif?: string;      // <--- O erro estava aqui (faltava este)
+    nif?: string;
     endereco?: string;
+
+    // === NOVOS CAMPOS DE APARÊNCIA ===
+    corPrimaria?: string;
+    logoUrl?: string;
 }
 
 export interface Clinica {
@@ -17,7 +21,11 @@ export interface Clinica {
     emailContato?: string;
     telefone?: string;
     nif?: string;
-    endereco?: string; // <--- Importante para a Guia de Trabalho
+    endereco?: string;
+
+    // Deixamos preparado caso queiras personalizar clínicas no futuro
+    corPrimaria?: string;
+    logoUrl?: string;
 }
 
 export interface Servico {
@@ -48,6 +56,9 @@ export interface Trabalho {
     clinica?: Clinica;
     servico?: Servico;
 
+    // URL do anexo principal (3D) para visualização rápida
+    arquivoUrl?: string;
+
     createdAt: string;
 }
 
@@ -60,10 +71,15 @@ export interface UserSession {
         usuarioId: string;
         nome: string;
         email: string;
+
         // Campos de Perfil
         emailContato?: string;
         telefone?: string;
         nif?: string;
         endereco?: string;
+
+        // === APARÊNCIA ===
+        corPrimaria?: string;
+        logoUrl?: string;
     }
 }

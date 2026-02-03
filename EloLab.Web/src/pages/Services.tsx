@@ -8,6 +8,10 @@ import type { Servico } from '../types';
 const MATERIAIS = ["Zircónia", "E-max", "Metal", "Acrílico", "Cerâmica", "Outros"];
 
 export function Services() {
+    // === WHITE LABEL ===
+    const primaryColor = localStorage.getItem('elolab_user_color') || '#2563EB';
+    // ===================
+
     const [servicos, setServicos] = useState<Servico[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -103,9 +107,11 @@ export function Services() {
             <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
                 {/* Form */}
                 <div className="lg:col-span-1">
-                    <div className={`sticky top-6 rounded-2xl border p-6 shadow-sm transition-colors ${idEdicao ? 'bg-blue-50 border-blue-200' : 'bg-white border-slate-200'}`}>
+                    <div className={`sticky top-6 rounded-2xl border p-6 shadow-sm transition-colors bg-white border-slate-200`}
+                         style={idEdicao ? { borderColor: primaryColor, backgroundColor: `${primaryColor}05` } : {}}>
+
                         <div className="mb-6 flex items-center justify-between">
-                            <h2 className={`text-lg font-bold ${idEdicao ? 'text-blue-800' : 'text-slate-900'}`}>
+                            <h2 className="text-lg font-bold text-slate-900" style={idEdicao ? { color: primaryColor } : {}}>
                                 {idEdicao ? 'Editar Serviço' : 'Novo Serviço'}
                             </h2>
                             {idEdicao && (
@@ -117,25 +123,43 @@ export function Services() {
                         <form onSubmit={handleSave} className="space-y-5">
                             <div>
                                 <label className="mb-1.5 block text-xs font-bold text-slate-400 uppercase">Nome</label>
-                                <input required type="text" value={nome} onChange={e => setNome(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-medium outline-none focus:border-blue-500" placeholder="Ex: Coroa Total" />
+                                <input required type="text" value={nome} onChange={e => setNome(e.target.value)}
+                                       className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-medium outline-none transition"
+                                       onFocus={(e) => e.target.style.borderColor = primaryColor}
+                                       onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
+                                       placeholder="Ex: Coroa Total" />
                             </div>
                             <div>
                                 <label className="mb-1.5 block text-xs font-bold text-slate-400 uppercase">Material</label>
-                                <select value={material} onChange={e => setMaterial(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-medium outline-none focus:border-blue-500">
+                                <select value={material} onChange={e => setMaterial(e.target.value)}
+                                        className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-medium outline-none transition"
+                                        onFocus={(e) => e.target.style.borderColor = primaryColor}
+                                        onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}>
                                     {MATERIAIS.map(m => <option key={m} value={m}>{m}</option>)}
                                 </select>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
                                     <label className="mb-1.5 block text-xs font-bold text-slate-400 uppercase">Preço (€)</label>
-                                    <input required type="number" step="0.01" value={preco} onChange={e => setPreco(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-medium outline-none focus:border-blue-500" placeholder="0.00" />
+                                    <input required type="number" step="0.01" value={preco} onChange={e => setPreco(e.target.value)}
+                                           className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-medium outline-none transition"
+                                           onFocus={(e) => e.target.style.borderColor = primaryColor}
+                                           onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
+                                           placeholder="0.00" />
                                 </div>
                                 <div>
                                     <label className="mb-1.5 block text-xs font-bold text-slate-400 uppercase">Prazo (Dias)</label>
-                                    <input required type="number" value={prazo} onChange={e => setPrazo(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-medium outline-none focus:border-blue-500" placeholder="5" />
+                                    <input required type="number" value={prazo} onChange={e => setPrazo(e.target.value)}
+                                           className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-medium outline-none transition"
+                                           onFocus={(e) => e.target.style.borderColor = primaryColor}
+                                           onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
+                                           placeholder="5" />
                                 </div>
                             </div>
-                            <button disabled={saving} type="submit" className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-bold text-white transition shadow-lg hover:-translate-y-0.5 disabled:opacity-50 ${idEdicao ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-slate-900 hover:bg-slate-800 shadow-slate-200'}`}>
+                            <button disabled={saving} type="submit"
+                                    className="flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-bold text-white transition shadow-lg hover:-translate-y-0.5 disabled:opacity-50"
+                                    style={{ backgroundColor: primaryColor, boxShadow: `0 4px 14px ${primaryColor}40` }}
+                            >
                                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : idEdicao ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                                 {idEdicao ? 'Salvar Alterações' : 'Adicionar Serviço'}
                             </button>
@@ -153,13 +177,25 @@ export function Services() {
                                 placeholder="Pesquisar..."
                                 value={busca}
                                 onChange={e => setBusca(e.target.value)}
-                                className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-12 pr-4 text-sm font-medium outline-none focus:border-blue-500 transition"
+                                className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-12 pr-4 text-sm font-medium outline-none transition"
+                                onFocus={(e) => e.target.style.borderColor = primaryColor}
+                                onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
                             />
                         </div>
                         <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0 no-scrollbar">
-                            <button onClick={() => setFiltroMaterial('Todos')} className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold transition ${filtroMaterial === 'Todos' ? 'bg-slate-800 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}>Todos</button>
+                            <button onClick={() => setFiltroMaterial('Todos')}
+                                    className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold transition border`}
+                                    style={filtroMaterial === 'Todos' ? { backgroundColor: primaryColor, color: 'white', borderColor: primaryColor } : { backgroundColor: 'white', color: '#64748b', borderColor: '#e2e8f0' }}
+                            >
+                                Todos
+                            </button>
                             {MATERIAIS.map(m => (
-                                <button key={m} onClick={() => setFiltroMaterial(m)} className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold transition ${filtroMaterial === m ? 'bg-blue-600 text-white' : 'bg-white text-slate-500 border border-slate-200 hover:bg-slate-50'}`}>{m}</button>
+                                <button key={m} onClick={() => setFiltroMaterial(m)}
+                                        className={`whitespace-nowrap rounded-full px-4 py-2 text-xs font-bold transition border`}
+                                        style={filtroMaterial === m ? { backgroundColor: primaryColor, color: 'white', borderColor: primaryColor } : { backgroundColor: 'white', color: '#64748b', borderColor: '#e2e8f0' }}
+                                >
+                                    {m}
+                                </button>
                             ))}
                         </div>
                     </div>
@@ -174,9 +210,11 @@ export function Services() {
                         ) : (
                             <div className="divide-y divide-slate-50">
                                 {servicosFiltrados.map((s) => (
-                                    <div key={s.id} className="group flex items-center justify-between p-5 hover:bg-blue-50/30 transition">
+                                    <div key={s.id} className="group flex items-center justify-between p-5 hover:bg-slate-50 transition">
                                         <div className="flex items-center gap-5">
-                                            <div className="hidden sm:flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-600 font-bold text-sm">
+                                            <div className="hidden sm:flex h-12 w-12 items-center justify-center rounded-xl font-bold text-sm"
+                                                 style={{ backgroundColor: `${primaryColor}10`, color: primaryColor }}
+                                            >
                                                 {s.material ? s.material.substring(0, 2).toUpperCase() : 'GE'}
                                             </div>
                                             <div>
@@ -192,8 +230,12 @@ export function Services() {
                                                 {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(s.precoBase)}
                                             </span>
                                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button onClick={() => handleEditClick(s)} className="rounded-lg p-2 text-slate-400 hover:bg-blue-100 hover:text-blue-600 transition"><Edit className="h-4 w-4" /></button>
-                                                <button onClick={() => handleDelete(s.id)} className="rounded-lg p-2 text-slate-400 hover:bg-red-100 hover:text-red-600 transition"><Trash2 className="h-4 w-4" /></button>
+                                                <button onClick={() => handleEditClick(s)} className="rounded-lg p-2 transition hover:bg-slate-100" style={{ color: primaryColor }}>
+                                                    <Edit className="h-4 w-4" />
+                                                </button>
+                                                <button onClick={() => handleDelete(s.id)} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 transition">
+                                                    <Trash2 className="h-4 w-4" />
+                                                </button>
                                             </div>
                                         </div>
                                     </div>

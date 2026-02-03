@@ -16,31 +16,30 @@ export function Login() {
         try {
             // 1. Efetuar Login
             const response = await api.post('/Auth/login', { email, password });
-            const { token } = response.data;
 
-            // 2. Salvar Token
+            // AGORA RECEBEMOS A COR E A LOGO AQUI
+            const { token, tipo, corPrimaria, logoUrl } = response.data;
+
+            // 2. Salvar Token e Dados de Aparência
             localStorage.setItem('elolab_token', token);
+            localStorage.setItem('elolab_user_type', tipo);
 
-            // 3. Garantir que o token está no header para a próxima requisição
-            api.defaults.headers.Authorization = `Bearer ${token}`;
+            // === NOVO: Salvar Aparência ===
+            // Se vier nulo, usamos o azul padrão
+            localStorage.setItem('elolab_user_color', corPrimaria || '#2563EB');
+            if (logoUrl) {
+                localStorage.setItem('elolab_user_logo', logoUrl);
+            } else {
+                localStorage.removeItem('elolab_user_logo');
+            }
+            // ==============================
 
-            // 4. Verificar o Tipo de Usuário
-            try {
-                const meResponse = await api.get('/Auth/me');
-                const { tipo } = meResponse.data;
+            api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
-                // === NOVO: Salvar o tipo para a Sidebar usar ===
-                localStorage.setItem('elolab_user_type', tipo);
-                // ===============================================
-
-                if (tipo === 'Clinica') {
-                    navigate('/parceiros');
-                } else {
-                    navigate('/dashboard');
-                }
-            } catch (err) {
-                // Se falhar, tenta ir para o dashboard (provavelmente é Lab)
-                localStorage.setItem('elolab_user_type', 'Laboratorio');
+            // 3. Redirecionar
+            if (tipo === 'Clinica') {
+                navigate('/parceiros');
+            } else {
                 navigate('/dashboard');
             }
 
