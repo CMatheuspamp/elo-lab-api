@@ -19,10 +19,10 @@ export function Dashboard() {
     // ===================
 
     // Filtros
+    const [parceiroSelecionadoId, setParceiroSelecionadoId] = useState('Todos'); // Renomeado para clareza, mas mantendo lógica
     const [parceirosParaFiltro, setParceirosParaFiltro] = useState<any[]>([]);
     const [busca, setBusca] = useState('');
     const [filtroStatus, setFiltroStatus] = useState('Todos');
-    const [filtroParceiro, setFiltroParceiro] = useState('Todos');
     const [filtroMes, setFiltroMes] = useState('');
 
     const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('pt-BR');
@@ -72,49 +72,58 @@ export function Dashboard() {
     function limparFiltros() {
         setBusca('');
         setFiltroStatus('Todos');
-        setFiltroParceiro('Todos');
+        setParceiroSelecionadoId('Todos');
         setFiltroMes('');
     }
 
     const isLab = user?.tipo === 'Laboratorio';
 
-    // Lógica de Filtro
+    // === LÓGICA DE FILTRAGEM ===
     const trabalhosFiltrados = trabalhos.filter(t => {
+        // 1. Busca Texto
         const textoMatch =
             t.pacienteNome.toLowerCase().includes(busca.toLowerCase()) ||
             t.id.toLowerCase().includes(busca.toLowerCase()) ||
             (t.servico?.nome || '').toLowerCase().includes(busca.toLowerCase());
+
+        // 2. Status
         const statusMatch = filtroStatus === 'Todos' || t.status === filtroStatus;
+
+        // 3. Parceiro (Clínica ou Lab)
         const idParceiroNoTrabalho = isLab ? t.clinicaId : t.laboratorioId;
-        const parceiroMatch = filtroParceiro === 'Todos' || idParceiroNoTrabalho === filtroParceiro;
+        const parceiroMatch = parceiroSelecionadoId === 'Todos' || idParceiroNoTrabalho === parceiroSelecionadoId;
+
+        // 4. Data (Mês)
         let dataMatch = true;
         if (filtroMes) {
+            // Compara o ano-mês de criação (ou entrega, se preferires)
             const mesTrabalho = new Date(t.createdAt).toISOString().slice(0, 7);
             dataMatch = mesTrabalho === filtroMes;
         }
+
         return textoMatch && statusMatch && parceiroMatch && dataMatch;
     });
 
-    const pendentes = trabalhos.filter(t => t.status === 'Pendente').length;
-    const emProducao = trabalhos.filter(t => t.status === 'EmProducao').length;
-    const concluidos = trabalhos.filter(t => t.status === 'Concluido').length;
-    const totalValor = trabalhos.reduce((acc, t) => acc + t.valorFinal, 0);
+    // === CÁLCULOS DINÂMICOS (Baseados no Filtro) ===
+    // Antes usávamos 'trabalhos.', agora usamos 'trabalhosFiltrados.'
+    const pendentes = trabalhosFiltrados.filter(t => t.status === 'Pendente').length;
+    const emProducao = trabalhosFiltrados.filter(t => t.status === 'EmProducao').length;
+    const concluidos = trabalhosFiltrados.filter(t => t.status === 'Concluido').length;
+
+    // Soma apenas o que está visível na tabela
+    const totalValor = trabalhosFiltrados.reduce((acc, t) => acc + t.valorFinal, 0);
 
     if (loading || !user) return <div className="p-8 text-slate-400">Carregando...</div>;
 
     return (
         <div className="p-8 space-y-8">
 
-            {/* === BANNER INSTITUCIONAL (VERSÃO LIMPA/BRANCA) === */}
+            {/* === BANNER INSTITUCIONAL === */}
             <div className="relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-100">
                 <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
                     <div className="flex items-center gap-6">
                         {logoUrl ? (
-                            <img
-                                src={getFullUrl(logoUrl)}
-                                alt="Logo"
-                                className="h-20 w-auto object-contain drop-shadow-sm"
-                            />
+                            <img src={getFullUrl(logoUrl)} alt="Logo" className="h-20 w-auto object-contain drop-shadow-sm" />
                         ) : (
                             <div className="h-20 w-20 rounded-2xl flex items-center justify-center text-white text-3xl font-bold shadow-lg shadow-slate-200"
                                  style={{ backgroundColor: primaryColor }}>
@@ -146,22 +155,23 @@ export function Dashboard() {
                         Novo Pedido
                     </button>
                 </div>
-                {/* Removi o elemento decorativo de fundo para ficar branco puro */}
             </div>
 
-            {/* Cards de Estatística */}
+            {/* Cards de Estatística (AGORA DINÂMICOS) */}
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="relative overflow-hidden rounded-2xl bg-white p-6 shadow-sm border border-slate-100 group hover:border-slate-200 transition">
                     <div className="flex items-center justify-between">
                         <div>
-                            <p className="text-xs font-bold uppercase text-slate-400">{isLab ? 'Faturamento' : 'Total Pedidos'}</p>
+                            {/* Texto muda para indicar que é um filtro */}
+                            <p className="text-xs font-bold uppercase text-slate-400">
+                                {busca || filtroStatus !== 'Todos' || filtroMes ? 'Faturamento (Filtrado)' : 'Faturamento Total'}
+                            </p>
                             <h3 className="mt-2 text-2xl font-black text-slate-900">{formatCurrency(totalValor)}</h3>
                         </div>
                         <div className="rounded-xl p-3" style={{ backgroundColor: `${primaryColor}15`, color: primaryColor }}>
                             {isLab ? <TrendingUp className="h-6 w-6" /> : <DollarSign className="h-6 w-6" />}
                         </div>
                     </div>
-                    {/* Barra de destaque na base */}
                     <div className="absolute bottom-0 left-0 h-1 w-full" style={{ backgroundColor: primaryColor }}></div>
                 </div>
 
@@ -220,7 +230,7 @@ export function Dashboard() {
                     </div>
                     <div>
                         <label className="mb-1.5 block text-xs font-bold text-slate-400 uppercase">{isLab ? 'Clínica' : 'Laboratório'}</label>
-                        <select value={filtroParceiro} onChange={e => setFiltroParceiro(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-sm font-medium outline-none focus:bg-white transition">
+                        <select value={parceiroSelecionadoId} onChange={e => setParceiroSelecionadoId(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-sm font-medium outline-none focus:bg-white transition">
                             <option value="Todos">Todos</option>
                             {parceirosParaFiltro.map((p: any) => (
                                 <option key={p.id} value={p.id}>{p.nome}</option>
