@@ -4,12 +4,11 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
     ArrowLeft, Save, Loader2, Calendar, User, FileText,
     Building2, Palette, ChevronDown, Euro, UploadCloud,
-    FileBox, Image as ImageIcon, Trash2, File, Smile
+    FileBox, Image as ImageIcon, Trash2, File, Smile, Calculator
 } from 'lucide-react';
 import type { UserSession, Servico } from '../types';
 
 // === DADOS ESTRUTURADOS PARA O ODONTOGRAMA ===
-// Quadrantes ISO: 1 (Sup Dir), 2 (Sup Esq), 3 (Inf Esq), 4 (Inf Dir)
 const TEETH_Q1 = ['18', '17', '16', '15', '14', '13', '12', '11'];
 const TEETH_Q2 = ['21', '22', '23', '24', '25', '26', '27', '28'];
 const TEETH_Q3 = ['31', '32', '33', '34', '35', '36', '37', '38'];
@@ -18,7 +17,6 @@ const TEETH_Q4 = ['48', '47', '46', '45', '44', '43', '42', '41'];
 const ALL_UPPER = [...TEETH_Q1, ...TEETH_Q2];
 const ALL_LOWER = [...TEETH_Q4, ...TEETH_Q3];
 
-// Escala Vita (Mantida)
 const VITA_SHADES = [
     { group: 'Bleach', colors: ['BL1', 'BL2', 'BL3', 'BL4'] },
     { group: 'A (Avermelhado)', colors: ['A1', 'A2', 'A3', 'A3.5', 'A4'] },
@@ -32,34 +30,28 @@ export function NewJob() {
     const location = useLocation();
     const [loading, setLoading] = useState(false);
     const [user, setUser] = useState<UserSession | null>(null);
-
-    // === WHITE LABEL ===
     const primaryColor = localStorage.getItem('elolab_user_color') || '#2563EB';
-    // ===================
 
     const [listaServicos, setListaServicos] = useState<Servico[]>([]);
     const [listaParceiros, setListaParceiros] = useState<any[]>([]);
-    const [paciente, setPaciente] = useState('');
 
-    // === NOVA LÓGICA DE DENTES ===
-    // Gerimos um array para a seleção visual...
+    // Estados do Formulário
+    const [parceiroSelecionadoId, setParceiroSelecionadoId] = useState('');
+    const [paciente, setPaciente] = useState('');
+    const [servicoId, setServicoId] = useState('');
+
+    // Dentes
     const [dentesSelecionados, setDentesSelecionados] = useState<string[]>([]);
-    // ...e mantemos a string para o backend e input manual
     const [dentesString, setDentesString] = useState('');
 
-    // Sincroniza a seleção visual com o campo de texto
-    useEffect(() => {
-        setDentesString(dentesSelecionados.join(', '));
-    }, [dentesSelecionados]);
-    // =============================
+    // Preços
+    const [valorUnitario, setValorUnitario] = useState<string>('');
+    const [valorTotal, setValorTotal] = useState<string>('');
 
     const [cor, setCor] = useState('');
     const [dataEntrega, setDataEntrega] = useState('');
     const [obs, setObs] = useState('');
     const [arquivos, setArquivos] = useState<File[]>([]);
-    const [parceiroSelecionadoId, setParceiroSelecionadoId] = useState('');
-    const [servicoId, setServicoId] = useState('');
-    const [valor, setValor] = useState('');
 
     useEffect(() => {
         carregarDadosIniciais();
@@ -70,12 +62,66 @@ export function NewJob() {
         if (user.tipo === 'Clinica' && parceiroSelecionadoId) {
             setListaServicos([]);
             setServicoId('');
-            setValor('');
+            setValorUnitario('');
+            setValorTotal('');
             api.get(`/Servicos/laboratorio/${parceiroSelecionadoId}`)
                 .then(res => setListaServicos(res.data))
-                .catch(() => alert("Erro ao carregar tabela de preços deste parceiro."));
+                .catch(() => alert("Erro ao carregar tabela de preços."));
         }
     }, [parceiroSelecionadoId, user]);
+
+    useEffect(() => {
+        if (dentesSelecionados.length === 0) {
+            setDentesString('');
+            return;
+        }
+        const isAllUpper = ALL_UPPER.every(t => dentesSelecionados.includes(t)) && dentesSelecionados.filter(t => ALL_UPPER.includes(t)).length === ALL_UPPER.length;
+        const isAllLower = ALL_LOWER.every(t => dentesSelecionados.includes(t)) && dentesSelecionados.filter(t => ALL_LOWER.includes(t)).length === ALL_LOWER.length;
+
+        if (isAllUpper && isAllLower) {
+            setDentesString("Boca Completa");
+        } else if (isAllUpper) {
+            const extraLower = dentesSelecionados.filter(t => !ALL_UPPER.includes(t));
+            if (extraLower.length > 0) setDentesString(`Superior + ${extraLower.join(', ')}`);
+            else setDentesString("Superior");
+        } else if (isAllLower) {
+            const extraUpper = dentesSelecionados.filter(t => !ALL_LOWER.includes(t));
+            if (extraUpper.length > 0) setDentesString(`Inferior + ${extraUpper.join(', ')}`);
+            else setDentesString("Inferior");
+        } else {
+            setDentesString(dentesSelecionados.join(', '));
+        }
+
+    }, [dentesSelecionados]);
+
+    useEffect(() => {
+        calcularValorTotal();
+    }, [dentesString, valorUnitario]);
+
+    function calcularValorTotal() {
+        if (!valorUnitario) {
+            setValorTotal('');
+            return;
+        }
+        const unitario = parseFloat(valorUnitario);
+        if (isNaN(unitario)) return;
+
+        let quantidade = 0;
+        if (dentesString === 'Superior' || dentesString === 'Inferior') {
+            quantidade = 1;
+        } else if (dentesString === 'Boca Completa') {
+            quantidade = 2;
+        } else {
+            quantidade = dentesSelecionados.length;
+        }
+
+        if (quantidade === 0) {
+            setValorTotal('');
+            return;
+        }
+        const total = unitario * quantidade;
+        setValorTotal(total.toFixed(2));
+    }
 
     async function carregarDadosIniciais() {
         try {
@@ -99,55 +145,44 @@ export function NewJob() {
         const novoId = e.target.value;
         setServicoId(novoId);
         const servicoSelecionado = listaServicos.find(s => s.id === novoId);
-        if (servicoSelecionado) setValor(servicoSelecionado.precoBase.toString());
-    }
-
-    function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
-        if (e.target.files) {
-            setArquivos(prev => [...prev, ...Array.from(e.target.files!)]);
+        if (servicoSelecionado) {
+            setValorUnitario(servicoSelecionado.precoBase.toString());
+        } else {
+            setValorUnitario('');
+            setValorTotal('');
         }
     }
 
+    function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
+        if (e.target.files) setArquivos(prev => [...prev, ...Array.from(e.target.files!)]);
+    }
     function removeFile(index: number) {
         setArquivos(prev => prev.filter((_, i) => i !== index));
     }
-
     function getFileIcon(fileName: string) {
         const ext = fileName.split('.').pop()?.toLowerCase();
         if (['jpg', 'jpeg', 'png'].includes(ext || '')) return <ImageIcon className="h-5 w-5" style={{ color: primaryColor }} />;
         if (['stl', 'obj', 'ply'].includes(ext || '')) return <FileBox className="h-5 w-5" style={{ color: primaryColor }} />;
         return <File className="h-5 w-5 text-slate-400" />;
     }
-
-    // === FUNÇÕES DO ODONTOGRAMA ===
     const toggleDente = (dente: string) => {
         setDentesSelecionados(prev =>
             prev.includes(dente) ? prev.filter(d => d !== dente) : [...prev, dente].sort()
         );
     };
-
     const selecionarArco = (tipo: 'superior' | 'inferior' | 'limpar') => {
         if (tipo === 'limpar') {
             setDentesSelecionados([]);
         } else if (tipo === 'superior') {
-            // Se já tiver todos os superiores, limpa eles. Se não, seleciona todos.
             const allSelected = ALL_UPPER.every(d => dentesSelecionados.includes(d));
-            if (allSelected) {
-                setDentesSelecionados(prev => prev.filter(d => !ALL_UPPER.includes(d)));
-            } else {
-                // Adiciona os superiores que faltam
-                setDentesSelecionados(prev => [...new Set([...prev, ...ALL_UPPER])].sort());
-            }
+            if (allSelected) setDentesSelecionados(prev => prev.filter(d => !ALL_UPPER.includes(d)));
+            else setDentesSelecionados(prev => [...new Set([...prev, ...ALL_UPPER])].sort());
         } else if (tipo === 'inferior') {
             const allSelected = ALL_LOWER.every(d => dentesSelecionados.includes(d));
-            if(allSelected) {
-                setDentesSelecionados(prev => prev.filter(d => !ALL_LOWER.includes(d)));
-            } else {
-                setDentesSelecionados(prev => [...new Set([...prev, ...ALL_LOWER])].sort());
-            }
+            if(allSelected) setDentesSelecionados(prev => prev.filter(d => !ALL_LOWER.includes(d)));
+            else setDentesSelecionados(prev => [...new Set([...prev, ...ALL_LOWER])].sort());
         }
     };
-    // ==============================
 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
@@ -159,11 +194,10 @@ export function NewJob() {
                 clinicaId: user.tipo === 'Laboratorio' ? parceiroSelecionadoId : user.meusDados.id,
                 servicoId: servicoId || null,
                 pacienteNome: paciente,
-                // Usa a string final (pode ter sido editada manualmente)
                 dentes: dentesString,
                 corDente: cor,
                 dataEntrega: new Date(dataEntrega).toISOString(),
-                valorPersonalizado: valor ? parseFloat(valor) : null,
+                valorPersonalizado: valorTotal ? parseFloat(valorTotal) : 0,
                 descricaoPersonalizada: obs
             };
             const response = await api.post('/Trabalhos', payload);
@@ -173,9 +207,7 @@ export function NewJob() {
                 for (const arquivo of arquivos) {
                     const formData = new FormData();
                     formData.append('arquivo', arquivo);
-                    await api.post(`/Trabalhos/${trabalhoId}/anexo`, formData, {
-                        headers: { 'Content-Type': 'multipart/form-data' }
-                    });
+                    await api.post(`/Trabalhos/${trabalhoId}/anexo`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
                 }
             }
             alert('✅ Pedido criado com sucesso!');
@@ -190,7 +222,6 @@ export function NewJob() {
     const isLab = user?.tipo === 'Laboratorio';
     const handleBack = () => { isLab ? navigate('/dashboard') : navigate('/parceiros'); };
 
-    // Componente interno para renderizar um dente
     const DenteBtn = ({ id }: { id: string }) => {
         const selected = dentesSelecionados.includes(id);
         return (
@@ -225,7 +256,7 @@ export function NewJob() {
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-8">
-                        {/* Dados Iniciais (Paciente e Parceiro) - Mantidos igual */}
+                        {/* Dados Iniciais */}
                         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                             <div className="md:col-span-2">
                                 <label className="mb-1.5 block text-sm font-bold text-slate-700">Nome do Paciente</label>
@@ -276,11 +307,10 @@ export function NewJob() {
                                     </div>
                                 </div>
 
-                                {/* === ODONTOGRAMA VISUAL === */}
+                                {/* ODONTOGRAMA */}
                                 <div className="md:col-span-2">
                                     <div className="flex items-center justify-between mb-3">
                                         <label className="block text-sm font-bold text-slate-700">Seleção de Dentes</label>
-                                        {/* Botões de Atalho */}
                                         <div className="flex gap-2 text-xs font-bold">
                                             <button type="button" onClick={() => selecionarArco('superior')} className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition">Superior</button>
                                             <button type="button" onClick={() => selecionarArco('inferior')} className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition">Inferior</button>
@@ -289,64 +319,49 @@ export function NewJob() {
                                     </div>
 
                                     <div className="rounded-xl border border-slate-200 bg-slate-100/50 p-6 flex flex-col items-center gap-6">
-                                        {/* Arco Superior */}
                                         <div className="flex gap-1">
                                             <div className="flex gap-1">{TEETH_Q1.map(id => <DenteBtn key={id} id={id} />)}</div>
-                                            <div className="w-0.5 bg-slate-300 mx-2 h-8 self-center opacity-50"></div> {/* Linha central */}
+                                            <div className="w-0.5 bg-slate-300 mx-2 h-8 self-center opacity-50"></div>
                                             <div className="flex gap-1">{TEETH_Q2.map(id => <DenteBtn key={id} id={id} />)}</div>
                                         </div>
-
-                                        {/* Arco Inferior */}
                                         <div className="flex gap-1">
                                             <div className="flex gap-1">{TEETH_Q4.map(id => <DenteBtn key={id} id={id} />)}</div>
-                                            <div className="w-0.5 bg-slate-300 mx-2 h-8 self-center opacity-50"></div> {/* Linha central */}
+                                            <div className="w-0.5 bg-slate-300 mx-2 h-8 self-center opacity-50"></div>
                                             <div className="flex gap-1">{TEETH_Q3.map(id => <DenteBtn key={id} id={id} />)}</div>
                                         </div>
                                     </div>
 
-                                    {/* Input Manual (Sincronizado) */}
                                     <div className="relative mt-4">
                                         <Smile className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
                                         <input
                                             type="text"
                                             value={dentesString}
-                                            onChange={e => setDentesString(e.target.value)} // Permite edição manual também
-                                            className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition placeholder:font-normal"
-                                            onFocus={(e) => e.target.style.borderColor = primaryColor}
-                                            onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
-                                            placeholder="Dentes selecionados aparecerão aqui (ex: 11, 21)"
+                                            readOnly
+                                            className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition placeholder:font-normal text-slate-500 cursor-not-allowed"
+                                            placeholder="Selecione os dentes acima..."
                                         />
-                                        <p className="mt-1.5 text-xs text-slate-400">Clique nos dentes acima ou digite manualmente.</p>
                                     </div>
                                 </div>
-                                {/* ============================ */}
 
-                                {/* Seletor de Cor (Mantido) */}
+                                {/* SELETOR DE COR */}
                                 <div className="md:col-span-2">
-                                    <label className="mb-2 block text-sm font-bold text-slate-700">Selecione a Cor (Escala Vita)</label>
+                                    <label className="mb-2 block text-sm font-bold text-slate-700">Selecione a Cor</label>
                                     <div className="mb-4 space-y-3 rounded-xl border border-slate-200 bg-white p-4">
                                         {VITA_SHADES.map((group) => (
                                             <div key={group.group} className="flex flex-col sm:flex-row sm:items-center gap-2">
                                                 <span className="w-32 text-xs font-bold uppercase text-slate-400">{group.group}</span>
                                                 <div className="flex flex-wrap gap-2">
-                                                    {group.colors.map((shade) => {
-                                                        const isSelected = cor === shade;
-                                                        return (
-                                                            <button
-                                                                key={shade}
-                                                                type="button"
-                                                                onClick={() => setCor(shade)}
-                                                                className={`flex h-8 w-10 items-center justify-center rounded-lg text-sm font-bold transition border ${
-                                                                    isSelected
-                                                                        ? 'text-white shadow-md transform scale-105'
-                                                                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
-                                                                }`}
-                                                                style={isSelected ? { backgroundColor: primaryColor, borderColor: primaryColor } : {}}
-                                                            >
-                                                                {shade}
-                                                            </button>
-                                                        );
-                                                    })}
+                                                    {group.colors.map((shade) => (
+                                                        <button
+                                                            key={shade}
+                                                            type="button"
+                                                            onClick={() => setCor(shade)}
+                                                            className={`flex h-8 w-10 items-center justify-center rounded-lg text-sm font-bold transition border ${cor === shade ? 'text-white shadow-md transform scale-105' : 'bg-slate-50 text-slate-600 border-slate-200'}`}
+                                                            style={cor === shade ? { backgroundColor: primaryColor, borderColor: primaryColor } : {}}
+                                                        >
+                                                            {shade}
+                                                        </button>
+                                                    ))}
                                                 </div>
                                             </div>
                                         ))}
@@ -357,25 +372,63 @@ export function NewJob() {
                                     </div>
                                 </div>
 
-                                {/* Data e Valor (Mantidos) */}
-                                <div>
-                                    <label className="mb-1.5 block text-sm font-bold text-slate-700">Data de Entrega</label>
-                                    <div className="relative">
-                                        <Calendar className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
-                                        <input required type="datetime-local" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
+                                {/* LINHA UNIFICADA: Data | Unitário | Total */}
+                                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6">
+
+                                    {/* Data */}
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-bold text-slate-700">Data de Entrega</label>
+                                        <div className="relative">
+                                            <Calendar className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
+                                            <input required type="datetime-local" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
+                                        </div>
+                                    </div>
+
+                                    {/* Unitário */}
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-bold text-slate-700">Valor Unitário (€)</label>
+                                        <div className="relative">
+                                            <Euro className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
+                                            <input
+                                                type="number"
+                                                step="0.01"
+                                                value={valorUnitario}
+                                                onChange={e => setValorUnitario(e.target.value)}
+                                                className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition"
+                                                onFocus={(e) => e.target.style.borderColor = primaryColor}
+                                                onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
+                                                placeholder="0.00"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Total */}
+                                    <div>
+                                        <label className="mb-1.5 block text-sm font-bold text-slate-700">Valor Total (€)</label>
+                                        <div className="relative">
+                                            <Calculator className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
+                                            <input
+                                                type="number"
+                                                value={valorTotal}
+                                                readOnly
+                                                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 font-bold text-slate-900 outline-none transition cursor-not-allowed"
+                                                placeholder="0.00"
+                                            />
+                                        </div>
                                     </div>
                                 </div>
-                                <div>
-                                    <label className="mb-1.5 block text-sm font-bold text-slate-700">Valor Estimado (€)</label>
-                                    <div className="relative">
-                                        <Euro className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
-                                        <input type="number" value={valor} onChange={e => setValor(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
-                                    </div>
+                                <div className="md:col-span-2">
+                                    <p className="text-xs text-slate-400 text-right">
+                                        {dentesString === 'Superior' || dentesString === 'Inferior'
+                                            ? '* Arcada completa conta como 1 unidade.'
+                                            : `* Calculado: ${dentesSelecionados.length > 0 ? dentesSelecionados.length : 0} elemento(s) x Unitário.`}
+                                    </p>
                                 </div>
+
                             </div>
                         </div>
 
-                        {/* Upload (Mantido) */}
+                        {/* Upload */}
                         <div>
                             <label className="mb-2 block text-sm font-bold text-slate-700">Anexos</label>
                             <div className="group relative flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 transition hover:bg-slate-100"
@@ -409,7 +462,7 @@ export function NewJob() {
                             )}
                         </div>
 
-                        {/* Obs (Mantido) */}
+                        {/* Obs */}
                         <div>
                             <label className="mb-1.5 block text-sm font-bold text-slate-700">Observações</label>
                             <textarea rows={3} value={obs} onChange={e => setObs(e.target.value)} className="w-full rounded-xl border border-slate-200 py-3 px-4 text-sm font-medium outline-none transition" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} placeholder="Instruções específicas..." />
