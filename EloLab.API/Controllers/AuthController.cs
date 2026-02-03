@@ -1,7 +1,11 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Text;
 using EloLab.API.Data;
 using EloLab.API.DTOs;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore; // Necessário para conversar com o Banco
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens; // Para SecurityTokenDescriptor
 
 namespace EloLab.API.Controllers;
 
@@ -10,13 +14,14 @@ namespace EloLab.API.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly Supabase.Client _supabaseClient;
-    private readonly AppDbContext _context; // <--- NOVIDADE 1: O acesso ao Banco
+    private readonly AppDbContext _context;
+    private readonly IConfiguration _configuration;
 
-    // NOVIDADE 2: Adicionamos o 'AppDbContext context' aqui para poder usar o banco
-    public AuthController(Supabase.Client supabaseClient, AppDbContext context)
+    public AuthController(Supabase.Client supabaseClient, AppDbContext context, IConfiguration configuration)
     {
         _supabaseClient = supabaseClient;
         _context = context;
+        _configuration = configuration;
     }
 
     [HttpPost("login")]
@@ -24,74 +29,106 @@ public class AuthController : ControllerBase
     {
         try
         {
+            // 1. Autenticar no Supabase (verifica se a senha bate)
             var session = await _supabaseClient.Auth.SignIn(request.Email, request.Password);
 
+            if (session == null || session.User == null)
+                return BadRequest(new { erro = "Credenciais inválidas." });
+
+            // ID do usuário no Supabase
+            if (!Guid.TryParse(session.User.Id, out var userId))
+                return BadRequest(new { erro = "ID de usuário inválido." });
+
+            // 2. Descobrir QUEM é este usuário nas nossas tabelas
+            string tipo = "Desconhecido";
+            string nome = session.User.Email; // Nome padrão caso não tenha perfil
+            Guid? laboratorioId = null;
+            Guid? clinicaId = null;
+
+            // Procura na tabela de Laboratórios
+            var lab = await _context.Laboratorios.FirstOrDefaultAsync(l => l.UsuarioId == userId);
+            if (lab != null)
+            {
+                tipo = "Laboratorio";
+                nome = lab.Nome;
+                laboratorioId = lab.Id;
+            }
+            else
+            {
+                // Se não for Lab, procura na tabela de Clínicas
+                var clinica = await _context.Clinicas.FirstOrDefaultAsync(c => c.UsuarioId == userId);
+                if (clinica != null)
+                {
+                    tipo = "Clinica";
+                    nome = clinica.Nome;
+                    clinicaId = clinica.Id;
+                }
+            }
+
+            // 3. Criar o "Token Inteligente" (Com os IDs lá dentro)
+            var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+                new Claim(ClaimTypes.Email, session.User.Email ?? ""),
+                new Claim("tipo", tipo)
+            };
+
+            // Aqui está o segredo: Colocamos o ID do Lab/Clinica direto no token
+            if (laboratorioId != null) claims.Add(new Claim("laboratorioId", laboratorioId.ToString()));
+            if (clinicaId != null) claims.Add(new Claim("clinicaId", clinicaId.ToString()));
+
+            // Assinar o token
+            var jwtSecret = _configuration["SupabaseSettings:JwtSecret"];
+            var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));
+            var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+            var tokenDescriptor = new SecurityTokenDescriptor
+            {
+                Subject = new ClaimsIdentity(claims),
+                Expires = DateTime.UtcNow.AddDays(7), // Dura 7 dias
+                SigningCredentials = creds,
+                Issuer = $"{_configuration["SupabaseSettings:Url"]}/auth/v1",
+                Audience = "authenticated"
+            };
+
+            var tokenHandler = new JwtSecurityTokenHandler();
+            var token = tokenHandler.CreateToken(tokenDescriptor);
+            var jwtString = tokenHandler.WriteToken(token);
+
+            // 4. Retornar tudo pronto para o Frontend
             return Ok(new 
             { 
-                token = session.AccessToken,
-                usuarioId = session.User.Id,
-                email = session.User.Email
+                token = jwtString,
+                usuarioId = userId,
+                email = session.User.Email,
+                tipo = tipo,
+                nome = nome
             });
         }
         catch (Exception ex)
         {
-            return BadRequest(new { erro = "Login falhou. Verifique email e senha." });
+            Console.WriteLine($"Erro Login: {ex.Message}");
+            return BadRequest(new { erro = "Falha no login. Verifique as credenciais." });
         }
     }
     
-    // NOVIDADE 3: O método agora é 'async Task' e procura no banco
+    // Mantemos o /me para compatibilidade, mas agora ele é mais robusto
     [HttpGet("me")]
     [Microsoft.AspNetCore.Authorization.Authorize] 
     public async Task<IActionResult> GetMe()
     {
-        // 1. Pegamos o ID do token
-        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-
-        // O Supabase as vezes manda o ID num campo chamado 'sub'
-        if (string.IsNullOrEmpty(userId))
-            userId = User.FindFirst("sub")?.Value;
-
-        if (string.IsNullOrEmpty(userId))
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId) || !Guid.TryParse(userId, out var uid)) 
             return Unauthorized();
 
-        // Convertemos o ID de string para Guid para poder pesquisar
-        if (!Guid.TryParse(userId, out var usuarioGuid))
-            return BadRequest("ID de usuário inválido.");
+        var lab = await _context.Laboratorios.FirstOrDefaultAsync(l => l.UsuarioId == uid);
+        if (lab != null) 
+            return Ok(new { id = lab.Id, tipo = "Laboratorio", meusDados = lab });
 
-        // 2. Vamos ao banco ver se existe um Laboratório com este dono
-        var laboratorio = await _context.Laboratorios
-            .FirstOrDefaultAsync(l => l.UsuarioId == usuarioGuid);
+        var clinica = await _context.Clinicas.FirstOrDefaultAsync(c => c.UsuarioId == uid);
+        if (clinica != null) 
+            return Ok(new { id = clinica.Id, tipo = "Clinica", meusDados = clinica });
 
-        if (laboratorio != null)
-        {
-            return Ok(new 
-            { 
-                Tipo = "Laboratorio", 
-                MeusDados = laboratorio,
-                SeuId = userId
-            });
-        }
-
-        // 3. Vamos ao banco ver se existe uma Clínica com este dono
-        var clinica = await _context.Clinicas
-            .FirstOrDefaultAsync(c => c.UsuarioId == usuarioGuid);
-
-        if (clinica != null)
-        {
-            return Ok(new 
-            { 
-                Tipo = "Clinica", 
-                MeusDados = clinica,
-                SeuId = userId
-            });
-        }
-
-        // 4. Se não achou nada (usuário novo que ainda não tem perfil)
-        return Ok(new 
-        { 
-            Tipo = "Desconhecido", 
-            Mensagem = "Você está logado, mas não tem Laboratório nem Clínica vinculados.",
-            SeuId = userId
-        });
+        return Ok(new { Tipo = "Desconhecido", Mensagem = "Sem perfil." });
     }
 }

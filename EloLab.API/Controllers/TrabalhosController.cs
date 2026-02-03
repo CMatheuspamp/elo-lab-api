@@ -1,10 +1,10 @@
 using EloLab.API.Data;
 using EloLab.API.DTOs;
 using EloLab.API.Models;
-using EloLab.API.Models.Enums; // Certifique-se que seu Enum está aqui ou remova se estiver em Models
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace EloLab.API.Controllers;
 
@@ -21,47 +21,40 @@ public class TrabalhosController : ControllerBase
     }
 
     // =============================================================
-    // 1. LISTAR MEUS TRABALHOS (Com dados completos)
+    // 1. LISTAGEM INTELIGENTE (Dashboard)
     // =============================================================
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Trabalho>>> GetTrabalhos()
     {
-        // A. Quem está a chamar?
-        var userId = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if (string.IsNullOrEmpty(userId)) userId = User.FindFirst("sub")?.Value;
+        // Tenta ler o ID do Laboratório direto do Token
+        var labIdClaim = User.FindFirst("laboratorioId")?.Value;
+        
+        // Tenta ler o ID da Clínica direto do Token
+        var clinicaIdClaim = User.FindFirst("clinicaId")?.Value;
 
-        if (string.IsNullOrEmpty(userId)) return Unauthorized();
-        var usuarioGuid = Guid.Parse(userId);
-
-        // B. Verificação: É um LABORATÓRIO?
-        var meuLab = await _context.Laboratorios
-            .FirstOrDefaultAsync(l => l.UsuarioId == usuarioGuid);
-
-        if (meuLab != null)
+        // CENÁRIO 1: É UM LABORATÓRIO
+        if (!string.IsNullOrEmpty(labIdClaim) && Guid.TryParse(labIdClaim, out var labId))
         {
             return await _context.Trabalhos
-                .Where(t => t.LaboratorioId == meuLab.Id)
-                .Include(t => t.Clinica) // Traz o nome da Clínica
-                .Include(t => t.Servico) // Traz o nome do Serviço (Coroa, Faceta, etc)
+                .Include(t => t.Clinica)
+                .Include(t => t.Servico)
+                .Where(t => t.LaboratorioId == labId)
                 .OrderByDescending(t => t.CreatedAt)
                 .ToListAsync();
         }
 
-        // C. Verificação: É uma CLÍNICA?
-        var minhaClinica = await _context.Clinicas
-            .FirstOrDefaultAsync(c => c.UsuarioId == usuarioGuid);
-
-        if (minhaClinica != null)
+        // CENÁRIO 2: É UMA CLÍNICA
+        if (!string.IsNullOrEmpty(clinicaIdClaim) && Guid.TryParse(clinicaIdClaim, out var clinicaId))
         {
             return await _context.Trabalhos
-                .Where(t => t.ClinicaId == minhaClinica.Id)
-                .Include(t => t.Laboratorio) // Traz o nome do Lab
-                .Include(t => t.Servico)     // Traz o nome do Serviço
+                .Include(t => t.Laboratorio)
+                .Include(t => t.Servico)
+                .Where(t => t.ClinicaId == clinicaId)
                 .OrderByDescending(t => t.CreatedAt)
                 .ToListAsync();
         }
 
-        // D. Nada encontrado (Usuário sem perfil vinculado)
+        // Se não tiver nenhum ID no token (algo errado com o login), retorna vazio
         return Ok(new List<Trabalho>());
     }
 
@@ -73,7 +66,7 @@ public class TrabalhosController : ControllerBase
     {
         decimal valorFinalCalculado = 0;
 
-        // Lógica de Preço: Se enviou valor manual, usa ele. Se não, pega da tabela.
+        // Lógica de Preço
         if (request.ValorPersonalizado.HasValue)
         {
             valorFinalCalculado = request.ValorPersonalizado.Value;
@@ -81,36 +74,34 @@ public class TrabalhosController : ControllerBase
         else if (request.ServicoId.HasValue)
         {
             var servico = await _context.Servicos.FindAsync(request.ServicoId.Value);
-            if (servico != null)
-            {
-                valorFinalCalculado = servico.PrecoBase;
-            }
+            if (servico != null) valorFinalCalculado = servico.PrecoBase;
         }
 
+        // Monta o objeto
         var trabalho = new Trabalho
         {
-            LaboratorioId = request.LaboratorioId,
+            // Se o ID vier na request, usa. Se não, tenta pegar do token (segurança extra)
+            LaboratorioId = request.LaboratorioId, 
             ClinicaId = request.ClinicaId,
             ServicoId = request.ServicoId,
             PacienteNome = request.PacienteNome,
             Dentes = request.Dentes,
             CorDente = request.CorDente,
             DescricaoPersonalizada = request.Observacoes,
-            DataEntregaPrevista = request.DataEntrega.ToUniversalTime(), // Sempre salvar em UTC
+            DataEntregaPrevista = request.DataEntrega.ToUniversalTime(),
             ValorFinal = valorFinalCalculado,
-            Status = "Pendente", // Hardcoded ou StatusTrabalho.Pendente.ToString()
+            Status = "Pendente",
             CreatedAt = DateTime.UtcNow
         };
 
         _context.Trabalhos.Add(trabalho);
         await _context.SaveChangesAsync();
 
-        // Retorna o trabalho criado
         return Ok(trabalho);
     }
     
     // =============================================================
-    // [NOVO] 4. BUSCAR UM TRABALHO ESPECÍFICO (Detalhes)
+    // 3. DETALHES
     // =============================================================
     [HttpGet("{id}")]
     public async Task<ActionResult<Trabalho>> GetTrabalho(Guid id)
@@ -127,7 +118,7 @@ public class TrabalhosController : ControllerBase
     }
     
     // =============================================================
-    // 3. MUDAR STATUS
+    // 4. MUDAR STATUS
     // =============================================================
     [HttpPatch("{trabalhoId}/status")]
     public async Task<IActionResult> AtualizarStatus(Guid trabalhoId, [FromBody] string novoStatus)
@@ -135,39 +126,29 @@ public class TrabalhosController : ControllerBase
         var trabalho = await _context.Trabalhos.FindAsync(trabalhoId);
         if (trabalho == null) return NotFound("Trabalho não encontrado.");
 
-        // Validação simples se o status existe no Enum (opcional, mas recomendado)
-        if (!Enum.TryParse<StatusTrabalho>(novoStatus, true, out _))
-        {
-           // Se quiser ser estrito, descomente a linha abaixo. 
-           // Por enquanto aceitamos string para facilitar o teste.
-           // return BadRequest("Status inválido.");
-        }
-
         trabalho.Status = novoStatus;
         await _context.SaveChangesAsync();
 
         return Ok(new { mensagem = "Status atualizado", novoStatus = trabalho.Status });
     }
     
-    // POST: api/Trabalhos/{id}/anexo
+    // =============================================================
+    // 5. UPLOAD DE ANEXOS (3D, Fotos, etc)
+    // =============================================================
     [HttpPost("{id}/anexo")]
     public async Task<IActionResult> UploadAnexo(Guid id, IFormFile arquivo)
     {
-        // 1. Validar se o trabalho existe
         var trabalho = await _context.Trabalhos.FindAsync(id);
         if (trabalho == null) return NotFound("Trabalho não encontrado.");
 
-        if (arquivo == null || arquivo.Length == 0)
-            return BadRequest("Nenhum arquivo enviado.");
+        if (arquivo == null || arquivo.Length == 0) return BadRequest("Nenhum arquivo enviado.");
 
-        // 2. Validar extensões
         var extensao = Path.GetExtension(arquivo.FileName).ToLower();
         var permitidos = new[] { ".stl", ".obj", ".ply", ".jpg", ".jpeg", ".png", ".pdf" };
         
-        if (!permitidos.Contains(extensao))
-            return BadRequest($"Formato {extensao} não suportado.");
+        if (!permitidos.Contains(extensao)) return BadRequest($"Formato {extensao} não suportado.");
 
-        // 3. Salvar no Disco
+        // Salvar no Disco
         var pastaUploads = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
         if (!Directory.Exists(pastaUploads)) Directory.CreateDirectory(pastaUploads);
 
@@ -179,34 +160,32 @@ public class TrabalhosController : ControllerBase
             await arquivo.CopyToAsync(stream);
         }
 
-        var urlPublica = $"/uploads/{nomeUnico}";
+        var urlPublica = $"/uploads/{nomeUnico}"; // URL relativa
 
-        // 4. Criar o objeto Anexo (usando o TEU modelo existente)
+        // Criar registro no banco
         var anexo = new Anexo
         {
             Id = Guid.NewGuid(),
             TrabalhoId = id,
             NomeArquivo = arquivo.FileName,
             Url = urlPublica,
-            TipoArquivo = extensao,    // Preenchendo o campo que já existe
-            TamanhoBytes = arquivo.Length, // Preenchendo o tamanho
+            TipoArquivo = extensao,
+            TamanhoBytes = arquivo.Length,
             CreatedAt = DateTime.UtcNow
         };
 
         _context.Anexos.Add(anexo);
         
-        // Atualiza a "capa" do trabalho se for o primeiro arquivo ou um arquivo 3D
+        // Define como "capa" se for STL/OBJ ou se for o primeiro arquivo
         if (string.IsNullOrEmpty(trabalho.ArquivoUrl) || extensao == ".stl" || extensao == ".obj")
         {
             trabalho.ArquivoUrl = urlPublica;
         }
 
         await _context.SaveChangesAsync();
-
         return Ok(anexo);
     }
     
-    // GET: api/Trabalhos/{id}/anexos
     [HttpGet("{id}/anexos")]
     public async Task<IActionResult> GetAnexos(Guid id)
     {

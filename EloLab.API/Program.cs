@@ -1,26 +1,31 @@
 using EloLab.API.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.AspNetCore.StaticFiles; // Necessário para FileExtensionContentTypeProvider
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.FileProviders; // Necessário para PhysicalFileProvider
-using Microsoft.IdentityModel.Tokens;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.IdentityModel.Tokens; // Necessário para tokens
 using Microsoft.OpenApi.Models;
 using Supabase;
+using System.Text;
+using System.Text.Json.Serialization; // Necessário para evitar ciclos JSON
 
 var builder = WebApplication.CreateBuilder(args);
 
-// =========================================================
-// 1. CONFIGURAÇÃO DO BANCO DE DADOS
-// =========================================================
+// 1. Configuração do Banco
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// =========================================================
-// 2. CONFIGURAÇÃO DO SUPABASE
-// =========================================================
-var supabaseUrl = builder.Configuration["SupabaseSettings:Url"] ?? throw new Exception("Url ausente");
-var supabaseKey = builder.Configuration["SupabaseSettings:Key"] ?? throw new Exception("Key ausente");
+// 2. Configurações do Supabase
+var supabaseUrl = builder.Configuration["SupabaseSettings:Url"];
+var supabaseKey = builder.Configuration["SupabaseSettings:Key"];
+var jwtSecret = builder.Configuration["SupabaseSettings:JwtSecret"]; // <--- Novo
+
+if (string.IsNullOrEmpty(supabaseUrl) || string.IsNullOrEmpty(jwtSecret))
+{
+    // Se esquecer o segredo, o app avisa logo no início
+    throw new Exception("ATENÇÃO: 'JwtSecret' ou 'Url' ausentes no appsettings.json");
+}
 
 var options = new SupabaseOptions
 {
@@ -31,9 +36,9 @@ var options = new SupabaseOptions
 builder.Services.AddScoped<Supabase.Client>(_ => 
     new Supabase.Client(supabaseUrl, supabaseKey, options));
 
-// =========================================================
-// 3. CONFIGURAÇÃO DA AUTENTICAÇÃO
-// =========================================================
+// 3. CONFIGURAÇÃO DA AUTENTICAÇÃO (TOKEN INTELIGENTE)
+var bytesKey = Encoding.UTF8.GetBytes(jwtSecret);
+
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
@@ -41,22 +46,30 @@ builder.Services.AddAuthentication(options =>
 })
 .AddJwtBearer(options =>
 {
-    options.Authority = $"{supabaseUrl}/auth/v1";
     options.TokenValidationParameters = new TokenValidationParameters
     {
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(bytesKey),
+        
         ValidateIssuer = true,
         ValidIssuer = $"{supabaseUrl}/auth/v1",
+        
         ValidateAudience = true,
         ValidAudience = "authenticated",
+        
         ValidateLifetime = true,
         ClockSkew = TimeSpan.Zero
     };
 });
 
-// =========================================================
-// 4. CONFIGURAÇÃO DO SWAGGER
-// =========================================================
-builder.Services.AddControllers();
+// 4. Controllers com prevenção de Ciclo Infinito (Erro 500)
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+    });
+
+// 5. Swagger e Documentação
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -68,7 +81,7 @@ builder.Services.AddSwaggerGen(c =>
         Scheme = "Bearer",
         BearerFormat = "JWT",
         In = ParameterLocation.Header,
-        Description = "Insira o token JWT desta forma: Bearer SEU_TOKEN_AQUI"
+        Description = "Insira o token assim: Bearer SEU_TOKEN"
     });
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
@@ -82,9 +95,7 @@ builder.Services.AddSwaggerGen(c =>
     });
 });
 
-// =========================================================
-// 5. CONFIGURAÇÃO DE CORS
-// =========================================================
+// 6. CORS (Permitir Frontend)
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("PermitirFrontend", policy =>
@@ -97,10 +108,6 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-// =========================================================
-// 6. PIPELINE DE EXECUÇÃO
-// =========================================================
-
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -108,45 +115,26 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-
-// CORS DEVE VIR AQUI
 app.UseCors("PermitirFrontend");
 
-// =========================================================
-// 7. CONFIGURAÇÃO BLINDADA DE ARQUIVOS ESTÁTICOS
-// =========================================================
-
-// A. Definir tipos MIME para STL e OBJ (Senão dá 404)
+// 7. Arquivos Estáticos (3D e Imagens)
 var provider = new FileExtensionContentTypeProvider();
 provider.Mappings[".stl"] = "application/vnd.ms-pki.stl";
 provider.Mappings[".obj"] = "model/obj";
 
-// B. Encontrar o caminho absoluto da pasta wwwroot
-// Isso resolve o problema de rodar em pastas diferentes
 var caminhoWwwRoot = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
-
-// Garantir que a pasta existe para não dar erro na inicialização
-if (!Directory.Exists(caminhoWwwRoot))
-{
-    Directory.CreateDirectory(caminhoWwwRoot);
-}
+if (!Directory.Exists(caminhoWwwRoot)) Directory.CreateDirectory(caminhoWwwRoot);
 
 app.UseStaticFiles(new StaticFileOptions
 {
-    // Força o servidor a olhar para a pasta física correta
     FileProvider = new PhysicalFileProvider(caminhoWwwRoot),
-    
-    // Aplica os tipos MIME novos
     ContentTypeProvider = provider,
-    
-    // Adiciona Headers CORS extra na resposta do arquivo
     OnPrepareResponse = ctx =>
     {
         ctx.Context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
         ctx.Context.Response.Headers.Append("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
     }
 });
-// =========================================================
 
 app.UseAuthentication();
 app.UseAuthorization();
