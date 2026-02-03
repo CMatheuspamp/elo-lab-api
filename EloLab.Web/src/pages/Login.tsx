@@ -21,21 +21,26 @@ export function Login() {
             // 2. Salvar Token
             localStorage.setItem('elolab_token', token);
 
-            // 3. Garantir que o token está no header para a próxima requisição imediata
+            // 3. Garantir que o token está no header para a próxima requisição
             api.defaults.headers.Authorization = `Bearer ${token}`;
 
-            // 4. Verificar o Tipo de Usuário para redirecionamento correto
+            // 4. Verificar o Tipo de Usuário
             try {
                 const meResponse = await api.get('/Auth/me');
                 const { tipo } = meResponse.data;
 
+                // === NOVO: Salvar o tipo para a Sidebar usar ===
+                localStorage.setItem('elolab_user_type', tipo);
+                // ===============================================
+
                 if (tipo === 'Clinica') {
-                    navigate('/parceiros'); // Home da Clínica
+                    navigate('/parceiros');
                 } else {
-                    navigate('/dashboard'); // Home do Laboratório
+                    navigate('/dashboard');
                 }
             } catch (err) {
-                // Se falhar ao pegar o perfil, manda pro dashboard por segurança
+                // Se falhar, tenta ir para o dashboard (provavelmente é Lab)
+                localStorage.setItem('elolab_user_type', 'Laboratorio');
                 navigate('/dashboard');
             }
 
@@ -49,17 +54,13 @@ export function Login() {
     return (
         <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4">
             <div className="w-full max-w-sm">
-                {/* Cabeçalho Minimalista */}
                 <div className="mb-8 text-center">
                     <h1 className="text-2xl font-bold tracking-tight text-slate-900">EloLab</h1>
                     <p className="mt-2 text-sm text-slate-500">Gestão inteligente para laboratórios e clínicas</p>
                 </div>
 
-                {/* Card de Login */}
                 <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm transition-all hover:shadow-md">
                     <form onSubmit={handleLogin} className="space-y-5">
-
-                        {/* Input Email */}
                         <div>
                             <label className="mb-1.5 block text-xs font-semibold text-slate-700 uppercase tracking-wider">
                                 Email Corporativo
@@ -77,7 +78,6 @@ export function Login() {
                             </div>
                         </div>
 
-                        {/* Input Senha */}
                         <div>
                             <label className="mb-1.5 block text-xs font-semibold text-slate-700 uppercase tracking-wider">
                                 Senha
@@ -95,7 +95,6 @@ export function Login() {
                             </div>
                         </div>
 
-                        {/* Botão de Ação */}
                         <button
                             type="submit"
                             disabled={loading}

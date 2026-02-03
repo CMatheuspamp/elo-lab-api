@@ -4,9 +4,10 @@ import { Dashboard } from './pages/Dashboard';
 import { NewJob } from './pages/NewJob';
 import { JobDetails } from './pages/JobDetails';
 import { Services } from "./pages/Services";
-import { Partners } from "./pages/Partners"; // <--- Novo Import
+import { Partners } from "./pages/Partners";
 import { Profile } from './pages/Profile';
-import { PrintJob } from "./pages/PrintJob.tsx";
+import { PrintJob } from "./pages/PrintJob";
+import { Layout } from './components/Layout'; // <--- Import Novo
 
 function App() {
     return (
@@ -15,15 +16,18 @@ function App() {
                 {/* Rotas Públicas */}
                 <Route path="/" element={<Login />} />
 
-                {/* Rotas Privadas (Futuramente pode envolver em um PrivateRoute) */}
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/parceiros" element={<Partners />} /> {/* <--- Nova Rota */}
-
-                <Route path="/trabalhos/novo" element={<NewJob />} />
-                <Route path="/trabalhos/:id" element={<JobDetails />} />
-                <Route path="/servicos" element={<Services />} />
-                <Route path="/perfil" element={<Profile />} />
+                {/* Rota de Impressão (Sem sidebar para sair limpa) */}
                 <Route path="/print/job/:id" element={<PrintJob />} />
+
+                {/* Rotas com Sidebar */}
+                <Route element={<Layout />}>
+                    <Route path="/dashboard" element={<Dashboard />} />
+                    <Route path="/parceiros" element={<Partners />} />
+                    <Route path="/trabalhos/novo" element={<NewJob />} />
+                    <Route path="/trabalhos/:id" element={<JobDetails />} />
+                    <Route path="/servicos" element={<Services />} />
+                    <Route path="/perfil" element={<Profile />} />
+                </Route>
 
                 {/* Fallback */}
                 <Route path="*" element={<Navigate to="/" replace />} />
