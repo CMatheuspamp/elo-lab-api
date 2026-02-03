@@ -4,9 +4,28 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import {
     ArrowLeft, Save, Loader2, Calendar, User, FileText,
     Building2, Palette, ChevronDown, Euro, UploadCloud,
-    FileBox, Image as ImageIcon, Trash2, File
+    FileBox, Image as ImageIcon, Trash2, File, Smile
 } from 'lucide-react';
 import type { UserSession, Servico } from '../types';
+
+// === DADOS ESTRUTURADOS PARA O ODONTOGRAMA ===
+// Quadrantes ISO: 1 (Sup Dir), 2 (Sup Esq), 3 (Inf Esq), 4 (Inf Dir)
+const TEETH_Q1 = ['18', '17', '16', '15', '14', '13', '12', '11'];
+const TEETH_Q2 = ['21', '22', '23', '24', '25', '26', '27', '28'];
+const TEETH_Q3 = ['31', '32', '33', '34', '35', '36', '37', '38'];
+const TEETH_Q4 = ['48', '47', '46', '45', '44', '43', '42', '41'];
+
+const ALL_UPPER = [...TEETH_Q1, ...TEETH_Q2];
+const ALL_LOWER = [...TEETH_Q4, ...TEETH_Q3];
+
+// Escala Vita (Mantida)
+const VITA_SHADES = [
+    { group: 'Bleach', colors: ['BL1', 'BL2', 'BL3', 'BL4'] },
+    { group: 'A (Avermelhado)', colors: ['A1', 'A2', 'A3', 'A3.5', 'A4'] },
+    { group: 'B (Amarelado)', colors: ['B1', 'B2', 'B3', 'B4'] },
+    { group: 'C (Acinzentado)', colors: ['C1', 'C2', 'C3', 'C4'] },
+    { group: 'D (Avermelhado-Cinza)', colors: ['D2', 'D3', 'D4'] },
+];
 
 export function NewJob() {
     const navigate = useNavigate();
@@ -21,7 +40,19 @@ export function NewJob() {
     const [listaServicos, setListaServicos] = useState<Servico[]>([]);
     const [listaParceiros, setListaParceiros] = useState<any[]>([]);
     const [paciente, setPaciente] = useState('');
-    const [dentes, setDentes] = useState('');
+
+    // === NOVA LÓGICA DE DENTES ===
+    // Gerimos um array para a seleção visual...
+    const [dentesSelecionados, setDentesSelecionados] = useState<string[]>([]);
+    // ...e mantemos a string para o backend e input manual
+    const [dentesString, setDentesString] = useState('');
+
+    // Sincroniza a seleção visual com o campo de texto
+    useEffect(() => {
+        setDentesString(dentesSelecionados.join(', '));
+    }, [dentesSelecionados]);
+    // =============================
+
     const [cor, setCor] = useState('');
     const [dataEntrega, setDataEntrega] = useState('');
     const [obs, setObs] = useState('');
@@ -88,6 +119,36 @@ export function NewJob() {
         return <File className="h-5 w-5 text-slate-400" />;
     }
 
+    // === FUNÇÕES DO ODONTOGRAMA ===
+    const toggleDente = (dente: string) => {
+        setDentesSelecionados(prev =>
+            prev.includes(dente) ? prev.filter(d => d !== dente) : [...prev, dente].sort()
+        );
+    };
+
+    const selecionarArco = (tipo: 'superior' | 'inferior' | 'limpar') => {
+        if (tipo === 'limpar') {
+            setDentesSelecionados([]);
+        } else if (tipo === 'superior') {
+            // Se já tiver todos os superiores, limpa eles. Se não, seleciona todos.
+            const allSelected = ALL_UPPER.every(d => dentesSelecionados.includes(d));
+            if (allSelected) {
+                setDentesSelecionados(prev => prev.filter(d => !ALL_UPPER.includes(d)));
+            } else {
+                // Adiciona os superiores que faltam
+                setDentesSelecionados(prev => [...new Set([...prev, ...ALL_UPPER])].sort());
+            }
+        } else if (tipo === 'inferior') {
+            const allSelected = ALL_LOWER.every(d => dentesSelecionados.includes(d));
+            if(allSelected) {
+                setDentesSelecionados(prev => prev.filter(d => !ALL_LOWER.includes(d)));
+            } else {
+                setDentesSelecionados(prev => [...new Set([...prev, ...ALL_LOWER])].sort());
+            }
+        }
+    };
+    // ==============================
+
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
         if (!user) return;
@@ -98,7 +159,8 @@ export function NewJob() {
                 clinicaId: user.tipo === 'Laboratorio' ? parceiroSelecionadoId : user.meusDados.id,
                 servicoId: servicoId || null,
                 pacienteNome: paciente,
-                dentes: dentes,
+                // Usa a string final (pode ter sido editada manualmente)
+                dentes: dentesString,
                 corDente: cor,
                 dataEntrega: new Date(dataEntrega).toISOString(),
                 valorPersonalizado: valor ? parseFloat(valor) : null,
@@ -128,6 +190,25 @@ export function NewJob() {
     const isLab = user?.tipo === 'Laboratorio';
     const handleBack = () => { isLab ? navigate('/dashboard') : navigate('/parceiros'); };
 
+    // Componente interno para renderizar um dente
+    const DenteBtn = ({ id }: { id: string }) => {
+        const selected = dentesSelecionados.includes(id);
+        return (
+            <button
+                type="button"
+                onClick={() => toggleDente(id)}
+                className={`flex h-9 w-9 items-center justify-center rounded-full border text-xs font-bold transition-all ${
+                    selected
+                        ? 'text-white shadow-md scale-110'
+                        : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                }`}
+                style={selected ? { backgroundColor: primaryColor, borderColor: primaryColor } : {}}
+            >
+                {id}
+            </button>
+        );
+    };
+
     return (
         <div className="p-8">
             <div className="mx-auto max-w-4xl">
@@ -144,6 +225,7 @@ export function NewJob() {
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-8">
+                        {/* Dados Iniciais (Paciente e Parceiro) - Mantidos igual */}
                         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                             <div className="md:col-span-2">
                                 <label className="mb-1.5 block text-sm font-bold text-slate-700">Nome do Paciente</label>
@@ -164,7 +246,7 @@ export function NewJob() {
                                     <Building2 className="absolute top-3 left-3 h-5 w-5" style={{ color: primaryColor }} />
                                     <select required value={parceiroSelecionadoId} onChange={e => setParceiroSelecionadoId(e.target.value)}
                                             className="w-full appearance-none rounded-xl border py-3 pl-10 pr-8 text-sm font-bold outline-none transition cursor-pointer"
-                                            style={{ borderColor: `${primaryColor}40`, backgroundColor: `${primaryColor}08`, color: primaryColor }} // Estilo leve
+                                            style={{ borderColor: `${primaryColor}40`, backgroundColor: `${primaryColor}08`, color: primaryColor }}
                                     >
                                         <option value="">{isLab ? "Selecione a Clínica..." : "Selecione o Laboratório..."}</option>
                                         {listaParceiros.map((p: any) => <option key={p.id} value={p.id}>{p.nome}</option>)}
@@ -179,7 +261,7 @@ export function NewJob() {
                             <h3 className="mb-5 flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-400">
                                 <FileText className="h-4 w-4"/> Ficha Técnica
                             </h3>
-                            <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+                            <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
                                 <div className="md:col-span-2">
                                     <label className="mb-1.5 block text-sm font-bold text-slate-700">Serviço</label>
                                     <div className="relative">
@@ -193,54 +275,111 @@ export function NewJob() {
                                         <ChevronDown className="pointer-events-none absolute right-4 top-3.5 h-4 w-4 text-slate-400" />
                                     </div>
                                 </div>
-                                <div>
-                                    <label className="mb-1.5 block text-sm font-bold text-slate-700">Dentes</label>
-                                    <input type="text" value={dentes} onChange={e => setDentes(e.target.value)}
-                                           className="w-full rounded-xl border border-slate-200 bg-white py-3 px-4 font-medium outline-none transition"
-                                           onFocus={(e) => e.target.style.borderColor = primaryColor}
-                                           onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
-                                           placeholder="Ex: 11, 21" />
-                                </div>
-                                {/* ... (Outros campos similares) ... */}
-                                <div>
-                                    <label className="mb-1.5 block text-sm font-bold text-slate-700">Cor</label>
-                                    <div className="relative">
-                                        <Palette className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
-                                        <input type="text" value={cor} onChange={e => setCor(e.target.value)}
-                                               className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition"
-                                               onFocus={(e) => e.target.style.borderColor = primaryColor}
-                                               onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
-                                               placeholder="Ex: A2" />
+
+                                {/* === ODONTOGRAMA VISUAL === */}
+                                <div className="md:col-span-2">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <label className="block text-sm font-bold text-slate-700">Seleção de Dentes</label>
+                                        {/* Botões de Atalho */}
+                                        <div className="flex gap-2 text-xs font-bold">
+                                            <button type="button" onClick={() => selecionarArco('superior')} className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition">Superior</button>
+                                            <button type="button" onClick={() => selecionarArco('inferior')} className="px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50 transition">Inferior</button>
+                                            <button type="button" onClick={() => selecionarArco('limpar')} className="px-3 py-1.5 rounded-lg bg-red-50 border border-red-100 text-red-600 hover:bg-red-100 transition">Limpar</button>
+                                        </div>
+                                    </div>
+
+                                    <div className="rounded-xl border border-slate-200 bg-slate-100/50 p-6 flex flex-col items-center gap-6">
+                                        {/* Arco Superior */}
+                                        <div className="flex gap-1">
+                                            <div className="flex gap-1">{TEETH_Q1.map(id => <DenteBtn key={id} id={id} />)}</div>
+                                            <div className="w-0.5 bg-slate-300 mx-2 h-8 self-center opacity-50"></div> {/* Linha central */}
+                                            <div className="flex gap-1">{TEETH_Q2.map(id => <DenteBtn key={id} id={id} />)}</div>
+                                        </div>
+
+                                        {/* Arco Inferior */}
+                                        <div className="flex gap-1">
+                                            <div className="flex gap-1">{TEETH_Q4.map(id => <DenteBtn key={id} id={id} />)}</div>
+                                            <div className="w-0.5 bg-slate-300 mx-2 h-8 self-center opacity-50"></div> {/* Linha central */}
+                                            <div className="flex gap-1">{TEETH_Q3.map(id => <DenteBtn key={id} id={id} />)}</div>
+                                        </div>
+                                    </div>
+
+                                    {/* Input Manual (Sincronizado) */}
+                                    <div className="relative mt-4">
+                                        <Smile className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
+                                        <input
+                                            type="text"
+                                            value={dentesString}
+                                            onChange={e => setDentesString(e.target.value)} // Permite edição manual também
+                                            className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition placeholder:font-normal"
+                                            onFocus={(e) => e.target.style.borderColor = primaryColor}
+                                            onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
+                                            placeholder="Dentes selecionados aparecerão aqui (ex: 11, 21)"
+                                        />
+                                        <p className="mt-1.5 text-xs text-slate-400">Clique nos dentes acima ou digite manualmente.</p>
                                     </div>
                                 </div>
+                                {/* ============================ */}
+
+                                {/* Seletor de Cor (Mantido) */}
+                                <div className="md:col-span-2">
+                                    <label className="mb-2 block text-sm font-bold text-slate-700">Selecione a Cor (Escala Vita)</label>
+                                    <div className="mb-4 space-y-3 rounded-xl border border-slate-200 bg-white p-4">
+                                        {VITA_SHADES.map((group) => (
+                                            <div key={group.group} className="flex flex-col sm:flex-row sm:items-center gap-2">
+                                                <span className="w-32 text-xs font-bold uppercase text-slate-400">{group.group}</span>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {group.colors.map((shade) => {
+                                                        const isSelected = cor === shade;
+                                                        return (
+                                                            <button
+                                                                key={shade}
+                                                                type="button"
+                                                                onClick={() => setCor(shade)}
+                                                                className={`flex h-8 w-10 items-center justify-center rounded-lg text-sm font-bold transition border ${
+                                                                    isSelected
+                                                                        ? 'text-white shadow-md transform scale-105'
+                                                                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100 hover:border-slate-300'
+                                                                }`}
+                                                                style={isSelected ? { backgroundColor: primaryColor, borderColor: primaryColor } : {}}
+                                                            >
+                                                                {shade}
+                                                            </button>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="relative">
+                                        <Palette className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
+                                        <input type="text" value={cor} onChange={e => setCor(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition placeholder:font-normal" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} placeholder="Ou digite personalizado (Ex: A2 cervical, A1 incisal)" />
+                                    </div>
+                                </div>
+
+                                {/* Data e Valor (Mantidos) */}
                                 <div>
                                     <label className="mb-1.5 block text-sm font-bold text-slate-700">Data de Entrega</label>
                                     <div className="relative">
                                         <Calendar className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
-                                        <input required type="datetime-local" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)}
-                                               className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition"
-                                               onFocus={(e) => e.target.style.borderColor = primaryColor}
-                                               onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
+                                        <input required type="datetime-local" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
                                     </div>
                                 </div>
                                 <div>
                                     <label className="mb-1.5 block text-sm font-bold text-slate-700">Valor Estimado (€)</label>
                                     <div className="relative">
                                         <Euro className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
-                                        <input type="number" value={valor} onChange={e => setValor(e.target.value)}
-                                               className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition"
-                                               onFocus={(e) => e.target.style.borderColor = primaryColor}
-                                               onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
+                                        <input type="number" value={valor} onChange={e => setValor(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Upload */}
+                        {/* Upload (Mantido) */}
                         <div>
                             <label className="mb-2 block text-sm font-bold text-slate-700">Anexos</label>
                             <div className="group relative flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 transition hover:bg-slate-100"
-                                 style={{ borderColor: '#cbd5e1' }} // Default
+                                 style={{ borderColor: '#cbd5e1' }}
                                  onMouseEnter={(e) => e.currentTarget.style.borderColor = primaryColor}
                                  onMouseLeave={(e) => e.currentTarget.style.borderColor = '#cbd5e1'}
                             >
@@ -250,7 +389,6 @@ export function NewJob() {
                                 </div>
                                 <input type="file" multiple accept=".stl,.obj,.ply,.jpg,.jpeg,.png,.pdf" className="absolute inset-0 h-full w-full cursor-pointer opacity-0" onChange={handleFileSelect} />
                             </div>
-                            {/* Lista de Arquivos */}
                             {arquivos.length > 0 && (
                                 <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                                     {arquivos.map((arq, index) => (
@@ -271,14 +409,10 @@ export function NewJob() {
                             )}
                         </div>
 
-                        {/* Obs */}
+                        {/* Obs (Mantido) */}
                         <div>
                             <label className="mb-1.5 block text-sm font-bold text-slate-700">Observações</label>
-                            <textarea rows={3} value={obs} onChange={e => setObs(e.target.value)}
-                                      className="w-full rounded-xl border border-slate-200 py-3 px-4 text-sm font-medium outline-none transition"
-                                      onFocus={(e) => e.target.style.borderColor = primaryColor}
-                                      onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
-                                      placeholder="Instruções específicas..." />
+                            <textarea rows={3} value={obs} onChange={e => setObs(e.target.value)} className="w-full rounded-xl border border-slate-200 py-3 px-4 text-sm font-medium outline-none transition" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} placeholder="Instruções específicas..." />
                         </div>
 
                         <div className="flex justify-end pt-6 border-t border-slate-100">
