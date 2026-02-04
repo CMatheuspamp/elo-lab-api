@@ -17,6 +17,12 @@ export function Sidebar() {
     const logoUrl = localStorage.getItem('elolab_user_logo');
     // ============================
 
+    // === ESTILO GRADIENTE ===
+    const sidebarStyle = {
+        background: `linear-gradient(180deg, ${primaryColor}15 0%, #ffffff 45%)`,
+        borderRight: `1px solid ${primaryColor}20`
+    };
+
     const isActive = (path: string) => location.pathname === path;
 
     const getFullUrl = (url: string) => {
@@ -27,12 +33,38 @@ export function Sidebar() {
         return `${baseUrl}${cleanPath}`;
     };
 
+    // === DEFINIÇÃO DOS ITENS DO MENU ===
     const menuItems = [
-        { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', show: true },
-        { label: 'Novo Pedido', icon: PlusCircle, path: '/trabalhos/novo', show: true },
-        { label: 'Parceiros', icon: Building2, path: '/parceiros', show: true },
-        { label: 'Serviços & Preços', icon: Tag, path: '/servicos', show: userType === 'Laboratorio' },
-        { label: 'Meu Perfil', icon: UserCircle, path: '/perfil', show: true },
+        {
+            label: 'Dashboard',
+            icon: LayoutDashboard,
+            path: '/dashboard',
+            show: userType === 'Laboratorio' // <--- ALTERADO: Só mostra para Laboratórios
+        },
+        {
+            label: 'Novo Pedido',
+            icon: PlusCircle,
+            path: '/trabalhos/novo',
+            show: true
+        },
+        {
+            label: 'Parceiros',
+            icon: Building2,
+            path: '/parceiros',
+            show: true
+        },
+        {
+            label: 'Serviços & Preços',
+            icon: Tag,
+            path: '/servicos',
+            show: userType === 'Laboratorio'
+        },
+        {
+            label: 'Meu Perfil',
+            icon: UserCircle,
+            path: '/perfil',
+            show: true
+        },
     ];
 
     function handleLogout() {
@@ -41,17 +73,16 @@ export function Sidebar() {
     }
 
     return (
-        <aside className="fixed left-0 top-0 h-screen w-64 border-r border-slate-200 bg-white flex flex-col z-20">
-            {/* LOGO AREA MAIOR 
-               - h-40 (160px) dá bastante espaço vertical
-               - px-6 dá margem lateral
-            */}
-            <div className="flex h-40 flex-col items-center justify-center border-b border-slate-100 px-6 py-6">
+        <aside
+            className="fixed left-0 top-0 h-screen w-64 flex flex-col z-20 transition-all duration-300"
+            style={sidebarStyle}
+        >
+            {/* LOGO AREA */}
+            <div className="flex h-40 flex-col items-center justify-center border-b border-slate-100/50 px-6 py-6">
                 {logoUrl ? (
                     <img
                         src={getFullUrl(logoUrl)}
                         alt="Logo"
-                        // Logo muito maior (até 112px de altura) e larga
                         className="max-h-28 w-auto max-w-full object-contain drop-shadow-sm transition-transform hover:scale-105"
                     />
                 ) : (
@@ -76,11 +107,12 @@ export function Sidebar() {
                             key={item.path}
                             onClick={() => navigate(item.path)}
                             className={`group flex w-full items-center gap-3 rounded-xl px-4 py-3.5 text-sm font-medium transition-all duration-200
-                                ${!active && 'text-slate-500 hover:bg-slate-50 hover:text-slate-900'}`}
+                                ${!active && 'text-slate-500 hover:bg-slate-50/50 hover:text-slate-900'}`}
                             style={active ? {
                                 backgroundColor: `${primaryColor}15`,
                                 color: primaryColor,
-                                fontWeight: '700'
+                                fontWeight: '700',
+                                borderRight: `3px solid ${primaryColor}`
                             } : {}}
                         >
                             <item.icon
@@ -94,7 +126,7 @@ export function Sidebar() {
             </nav>
 
             {/* Footer */}
-            <div className="p-4 border-t border-slate-100">
+            <div className="p-4 border-t border-slate-100/50">
                 <button
                     onClick={handleLogout}
                     className="group flex w-full items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium text-slate-500 hover:bg-red-50 hover:text-red-600 transition"

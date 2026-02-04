@@ -30,7 +30,9 @@ export function NewJob() {
     const location = useLocation();
     const [loading, setLoading] = useState(false);
     const [user, setUser] = useState<UserSession | null>(null);
-    const primaryColor = localStorage.getItem('elolab_user_color') || '#2563EB';
+
+    // Cor Dinâmica (Inicia com Azul padrão)
+    const [dynamicPrimaryColor, setDynamicPrimaryColor] = useState('#2563EB');
 
     const [listaServicos, setListaServicos] = useState<Servico[]>([]);
     const [listaParceiros, setListaParceiros] = useState<any[]>([]);
@@ -53,30 +55,54 @@ export function NewJob() {
     const [obs, setObs] = useState('');
     const [arquivos, setArquivos] = useState<File[]>([]);
 
+    // === VARIÁVEIS AUXILIARES ===
+    const isLab = user?.tipo === 'Laboratorio'; // <--- AQUI ESTAVA A FALTA
+    const isPreSelected = !!location.state?.labId;
+
+    // === GRADIENTE REFORÇADO ===
+    const backgroundStyle = {
+        background: `linear-gradient(180deg, ${dynamicPrimaryColor}40 0%, #f8fafc 100%)`,
+        backgroundColor: '#f8fafc'
+    };
+
     useEffect(() => {
         carregarDadosIniciais();
     }, []);
 
+    // Lógica de Cor "Camaleão"
+    useEffect(() => {
+        if (isLab) {
+            setDynamicPrimaryColor(localStorage.getItem('elolab_user_color') || '#2563EB');
+        } else if (parceiroSelecionadoId) {
+            const parceiro = listaParceiros.find(p => p.id === parceiroSelecionadoId);
+            setDynamicPrimaryColor(parceiro?.corPrimaria || '#2563EB');
+        } else {
+            setDynamicPrimaryColor('#64748b'); // Cinzento Neutro se ninguém selecionado
+        }
+    }, [isLab, parceiroSelecionadoId, listaParceiros]);
+
+    // Carregar serviços quando seleciona parceiro (se for clínica)
     useEffect(() => {
         if (!user) return;
-        if (user.tipo === 'Clinica' && parceiroSelecionadoId) {
+        if (!isLab && parceiroSelecionadoId) {
             setListaServicos([]);
             setServicoId('');
             setValorUnitario('');
             setValorTotal('');
             api.get(`/Servicos/laboratorio/${parceiroSelecionadoId}`)
                 .then(res => setListaServicos(res.data))
-                .catch(() => alert("Erro ao carregar tabela de preços."));
+                .catch(() => {});
         }
-    }, [parceiroSelecionadoId, user]);
+    }, [parceiroSelecionadoId, user, isLab]);
 
+    // Lógica de Strings dos Dentes
     useEffect(() => {
         if (dentesSelecionados.length === 0) {
             setDentesString('');
             return;
         }
-        const isAllUpper = ALL_UPPER.every(t => dentesSelecionados.includes(t)) && dentesSelecionados.filter(t => ALL_UPPER.includes(t)).length === ALL_UPPER.length;
-        const isAllLower = ALL_LOWER.every(t => dentesSelecionados.includes(t)) && dentesSelecionados.filter(t => ALL_LOWER.includes(t)).length === ALL_LOWER.length;
+        const isAllUpper = ALL_UPPER.every(t => dentesSelecionados.includes(t));
+        const isAllLower = ALL_LOWER.every(t => dentesSelecionados.includes(t));
 
         if (isAllUpper && isAllLower) {
             setDentesString("Boca Completa");
@@ -91,9 +117,9 @@ export function NewJob() {
         } else {
             setDentesString(dentesSelecionados.join(', '));
         }
-
     }, [dentesSelecionados]);
 
+    // Cálculo do Total
     useEffect(() => {
         calcularValorTotal();
     }, [dentesString, valorUnitario]);
@@ -127,14 +153,19 @@ export function NewJob() {
         try {
             const resUser = await api.get('/Auth/me');
             setUser(resUser.data);
-            if (resUser.data.tipo === 'Laboratorio') {
+            const isUsuarioLab = resUser.data.tipo === 'Laboratorio'; // Variável local para uso imediato
+
+            if (isUsuarioLab) {
                 api.get('/Servicos').then(res => setListaServicos(res.data));
                 const res = await api.get('/Clinicas');
                 setListaParceiros(res.data);
             } else {
                 const res = await api.get('/Laboratorios');
                 setListaParceiros(res.data);
-                if (location.state?.labId) setParceiroSelecionadoId(location.state.labId);
+                // Se vier pré-selecionado do Dashboard do Parceiro
+                if (location.state?.labId) {
+                    setParceiroSelecionadoId(location.state.labId);
+                }
             }
         } catch (error) {
             navigate('/dashboard');
@@ -153,6 +184,18 @@ export function NewJob() {
         }
     }
 
+    // Função de Voltar Inteligente
+    const handleBack = () => {
+        if (isLab) {
+            navigate('/dashboard');
+        } else if (isPreSelected && parceiroSelecionadoId) {
+            // Se veio do dashboard do parceiro, volta para lá
+            navigate(`/parceiros/${parceiroSelecionadoId}/dashboard`);
+        } else {
+            navigate('/parceiros');
+        }
+    };
+
     function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
         if (e.target.files) setArquivos(prev => [...prev, ...Array.from(e.target.files!)]);
     }
@@ -161,8 +204,8 @@ export function NewJob() {
     }
     function getFileIcon(fileName: string) {
         const ext = fileName.split('.').pop()?.toLowerCase();
-        if (['jpg', 'jpeg', 'png'].includes(ext || '')) return <ImageIcon className="h-5 w-5" style={{ color: primaryColor }} />;
-        if (['stl', 'obj', 'ply'].includes(ext || '')) return <FileBox className="h-5 w-5" style={{ color: primaryColor }} />;
+        if (['jpg', 'jpeg', 'png'].includes(ext || '')) return <ImageIcon className="h-5 w-5" style={{ color: dynamicPrimaryColor }} />;
+        if (['stl', 'obj', 'ply'].includes(ext || '')) return <FileBox className="h-5 w-5" style={{ color: dynamicPrimaryColor }} />;
         return <File className="h-5 w-5 text-slate-400" />;
     }
     const toggleDente = (dente: string) => {
@@ -190,8 +233,8 @@ export function NewJob() {
         setLoading(true);
         try {
             const payload = {
-                laboratorioId: user.tipo === 'Laboratorio' ? user.meusDados.id : parceiroSelecionadoId,
-                clinicaId: user.tipo === 'Laboratorio' ? parceiroSelecionadoId : user.meusDados.id,
+                laboratorioId: isLab ? user.meusDados.id : parceiroSelecionadoId,
+                clinicaId: isLab ? parceiroSelecionadoId : user.meusDados.id,
                 servicoId: servicoId || null,
                 pacienteNome: paciente,
                 dentes: dentesString,
@@ -211,16 +254,22 @@ export function NewJob() {
                 }
             }
             alert('✅ Pedido criado com sucesso!');
-            navigate(user.tipo === 'Clinica' ? '/parceiros' : '/dashboard');
+
+            // Redirecionamento Inteligente após sucesso
+            if (!isLab && isPreSelected) {
+                navigate(`/parceiros/${parceiroSelecionadoId}/dashboard`);
+            } else if (!isLab) {
+                navigate('/parceiros');
+            } else {
+                navigate('/dashboard');
+            }
+
         } catch (error) {
             alert('Erro ao criar trabalho.');
         } finally {
             setLoading(false);
         }
     }
-
-    const isLab = user?.tipo === 'Laboratorio';
-    const handleBack = () => { isLab ? navigate('/dashboard') : navigate('/parceiros'); };
 
     const DenteBtn = ({ id }: { id: string }) => {
         const selected = dentesSelecionados.includes(id);
@@ -233,7 +282,7 @@ export function NewJob() {
                         ? 'text-white shadow-md scale-110'
                         : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                 }`}
-                style={selected ? { backgroundColor: primaryColor, borderColor: primaryColor } : {}}
+                style={selected ? { backgroundColor: dynamicPrimaryColor, borderColor: dynamicPrimaryColor } : {}}
             >
                 {id}
             </button>
@@ -241,10 +290,10 @@ export function NewJob() {
     };
 
     return (
-        <div className="p-8">
+        <div className="min-h-screen p-8 transition-all duration-500" style={backgroundStyle}>
             <div className="mx-auto max-w-4xl">
                 <div className="mb-6">
-                    <button onClick={handleBack} className="flex items-center gap-2 text-sm font-bold text-slate-400 hover:text-slate-800 transition">
+                    <button onClick={handleBack} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-800 transition">
                         <ArrowLeft className="h-4 w-4" /> Cancelar
                     </button>
                 </div>
@@ -264,25 +313,37 @@ export function NewJob() {
                                     <User className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
                                     <input required type="text" value={paciente} onChange={e => setPaciente(e.target.value)}
                                            className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 font-medium outline-none focus:bg-white transition"
-                                           onFocus={(e) => e.target.style.borderColor = primaryColor}
+                                           onFocus={(e) => e.target.style.borderColor = dynamicPrimaryColor}
                                            onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
                                            placeholder="Ex: Maria Silva" />
                                 </div>
                             </div>
                             <div className="md:col-span-2">
-                                <label className="mb-1.5 block text-sm font-bold" style={{ color: primaryColor }}>
+                                <label className="mb-1.5 block text-sm font-bold" style={{ color: dynamicPrimaryColor }}>
                                     {isLab ? "Clínica (Cliente)" : "Laboratório (Parceiro)"}
                                 </label>
                                 <div className="relative">
-                                    <Building2 className="absolute top-3 left-3 h-5 w-5" style={{ color: primaryColor }} />
-                                    <select required value={parceiroSelecionadoId} onChange={e => setParceiroSelecionadoId(e.target.value)}
-                                            className="w-full appearance-none rounded-xl border py-3 pl-10 pr-8 text-sm font-bold outline-none transition cursor-pointer"
-                                            style={{ borderColor: `${primaryColor}40`, backgroundColor: `${primaryColor}08`, color: primaryColor }}
+                                    <Building2 className="absolute top-3 left-3 h-5 w-5" style={{ color: dynamicPrimaryColor }} />
+
+                                    {/* SELETOR COM TRAVA DE SEGURANÇA */}
+                                    <select
+                                        required
+                                        value={parceiroSelecionadoId}
+                                        onChange={e => setParceiroSelecionadoId(e.target.value)}
+                                        // Bloqueia se for Clínica e já vier pré-selecionado
+                                        disabled={!isLab && isPreSelected}
+                                        className={`w-full appearance-none rounded-xl border py-3 pl-10 pr-8 text-sm font-bold outline-none transition
+                                            ${!isLab && isPreSelected ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
+                                        style={{ borderColor: `${dynamicPrimaryColor}40`, backgroundColor: `${dynamicPrimaryColor}08`, color: dynamicPrimaryColor }}
                                     >
                                         <option value="">{isLab ? "Selecione a Clínica..." : "Selecione o Laboratório..."}</option>
                                         {listaParceiros.map((p: any) => <option key={p.id} value={p.id}>{p.nome}</option>)}
                                     </select>
-                                    <ChevronDown className="pointer-events-none absolute right-4 top-3.5 h-4 w-4" style={{ color: primaryColor }} />
+
+                                    {/* Esconde a seta se estiver bloqueado para dar feedback visual */}
+                                    {!(!isLab && isPreSelected) && (
+                                        <ChevronDown className="pointer-events-none absolute right-4 top-3.5 h-4 w-4" style={{ color: dynamicPrimaryColor }} />
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -298,7 +359,7 @@ export function NewJob() {
                                     <div className="relative">
                                         <select value={servicoId} onChange={handleServicoChange} disabled={!parceiroSelecionadoId && !isLab}
                                                 className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-3 pl-4 pr-8 text-sm font-medium outline-none transition cursor-pointer disabled:opacity-50"
-                                                onFocus={(e) => e.target.style.borderColor = primaryColor}
+                                                onFocus={(e) => e.target.style.borderColor = dynamicPrimaryColor}
                                                 onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}>
                                             <option value="">Selecione o serviço...</option>
                                             {listaServicos.map(s => <option key={s.id} value={s.id}>{s.nome} - {s.material} ({new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(s.precoBase)})</option>)}
@@ -357,7 +418,7 @@ export function NewJob() {
                                                             type="button"
                                                             onClick={() => setCor(shade)}
                                                             className={`flex h-8 w-10 items-center justify-center rounded-lg text-sm font-bold transition border ${cor === shade ? 'text-white shadow-md transform scale-105' : 'bg-slate-50 text-slate-600 border-slate-200'}`}
-                                                            style={cor === shade ? { backgroundColor: primaryColor, borderColor: primaryColor } : {}}
+                                                            style={cor === shade ? { backgroundColor: dynamicPrimaryColor, borderColor: dynamicPrimaryColor } : {}}
                                                         >
                                                             {shade}
                                                         </button>
@@ -368,7 +429,7 @@ export function NewJob() {
                                     </div>
                                     <div className="relative">
                                         <Palette className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
-                                        <input type="text" value={cor} onChange={e => setCor(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition placeholder:font-normal" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} placeholder="Ou digite personalizado (Ex: A2 cervical, A1 incisal)" />
+                                        <input type="text" value={cor} onChange={e => setCor(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition placeholder:font-normal" onFocus={(e) => e.target.style.borderColor = dynamicPrimaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} placeholder="Ou digite personalizado (Ex: A2 cervical, A1 incisal)" />
                                     </div>
                                 </div>
 
@@ -380,7 +441,7 @@ export function NewJob() {
                                         <label className="mb-1.5 block text-sm font-bold text-slate-700">Data de Entrega</label>
                                         <div className="relative">
                                             <Calendar className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
-                                            <input required type="datetime-local" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
+                                            <input required type="datetime-local" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition" onFocus={(e) => e.target.style.borderColor = dynamicPrimaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
                                         </div>
                                     </div>
 
@@ -395,7 +456,7 @@ export function NewJob() {
                                                 value={valorUnitario}
                                                 onChange={e => setValorUnitario(e.target.value)}
                                                 className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition"
-                                                onFocus={(e) => e.target.style.borderColor = primaryColor}
+                                                onFocus={(e) => e.target.style.borderColor = dynamicPrimaryColor}
                                                 onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
                                                 placeholder="0.00"
                                             />
@@ -433,11 +494,11 @@ export function NewJob() {
                             <label className="mb-2 block text-sm font-bold text-slate-700">Anexos</label>
                             <div className="group relative flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 transition hover:bg-slate-100"
                                  style={{ borderColor: '#cbd5e1' }}
-                                 onMouseEnter={(e) => e.currentTarget.style.borderColor = primaryColor}
+                                 onMouseEnter={(e) => e.currentTarget.style.borderColor = dynamicPrimaryColor}
                                  onMouseLeave={(e) => e.currentTarget.style.borderColor = '#cbd5e1'}
                             >
                                 <div className="flex flex-col items-center text-slate-400 group-hover:text-slate-600 transition">
-                                    <UploadCloud className="mb-2 h-10 w-10" style={{ color: primaryColor }} />
+                                    <UploadCloud className="mb-2 h-10 w-10" style={{ color: dynamicPrimaryColor }} />
                                     <span className="text-sm font-bold">Clique ou arraste arquivos aqui</span>
                                 </div>
                                 <input type="file" multiple accept=".stl,.obj,.ply,.jpg,.jpeg,.png,.pdf" className="absolute inset-0 h-full w-full cursor-pointer opacity-0" onChange={handleFileSelect} />
@@ -447,7 +508,7 @@ export function NewJob() {
                                     {arquivos.map((arq, index) => (
                                         <div key={index} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                                             <div className="flex items-center gap-3 overflow-hidden">
-                                                <div className="rounded-lg p-2" style={{ backgroundColor: `${primaryColor}10` }}>
+                                                <div className="rounded-lg p-2" style={{ backgroundColor: `${dynamicPrimaryColor}10` }}>
                                                     {getFileIcon(arq.name)}
                                                 </div>
                                                 <div className="truncate">
@@ -465,13 +526,13 @@ export function NewJob() {
                         {/* Obs */}
                         <div>
                             <label className="mb-1.5 block text-sm font-bold text-slate-700">Observações</label>
-                            <textarea rows={3} value={obs} onChange={e => setObs(e.target.value)} className="w-full rounded-xl border border-slate-200 py-3 px-4 text-sm font-medium outline-none transition" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} placeholder="Instruções específicas..." />
+                            <textarea rows={3} value={obs} onChange={e => setObs(e.target.value)} className="w-full rounded-xl border border-slate-200 py-3 px-4 text-sm font-medium outline-none transition" onFocus={(e) => e.target.style.borderColor = dynamicPrimaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} placeholder="Instruções específicas..." />
                         </div>
 
                         <div className="flex justify-end pt-6 border-t border-slate-100">
                             <button type="submit" disabled={loading}
                                     className="flex items-center gap-2 rounded-xl px-8 py-3.5 font-bold text-white shadow-lg transition hover:-translate-y-0.5 disabled:opacity-70"
-                                    style={{ backgroundColor: primaryColor, boxShadow: `0 4px 14px ${primaryColor}60` }}
+                                    style={{ backgroundColor: dynamicPrimaryColor, boxShadow: `0 4px 14px ${dynamicPrimaryColor}60` }}
                             >
                                 {loading ? <Loader2 className="animate-spin" /> : <><Save className="h-5 w-5" /> Confirmar Pedido</>}
                             </button>

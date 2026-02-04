@@ -3,7 +3,7 @@ import { api } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import {
     TrendingUp, AlertCircle, Clock, CheckCircle,
-    DollarSign, Filter, Search, Plus, Calendar, ArrowRight
+    DollarSign, Filter, Search, Plus, Calendar, ArrowRight, XCircle
 } from 'lucide-react';
 import type { UserSession, Trabalho } from '../types';
 
@@ -16,10 +16,15 @@ export function Dashboard() {
     // === WHITE LABEL ===
     const primaryColor = localStorage.getItem('elolab_user_color') || '#2563EB';
     const logoUrl = localStorage.getItem('elolab_user_logo');
-    // ===================
+
+    // Gradiente
+    const backgroundStyle = {
+        background: `linear-gradient(180deg, ${primaryColor}40 0%, #f8fafc 100%)`,
+        backgroundColor: '#f8fafc'
+    };
 
     // Filtros
-    const [parceiroSelecionadoId, setParceiroSelecionadoId] = useState('Todos'); // Renomeado para clareza, mas mantendo lógica
+    const [parceiroSelecionadoId, setParceiroSelecionadoId] = useState('Todos');
     const [parceirosParaFiltro, setParceirosParaFiltro] = useState<any[]>([]);
     const [busca, setBusca] = useState('');
     const [filtroStatus, setFiltroStatus] = useState('Todos');
@@ -28,7 +33,6 @@ export function Dashboard() {
     const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('pt-BR');
     const formatCurrency = (value: number) => new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
 
-    // Helper URL Imagem
     const getFullUrl = (url: string) => {
         if (!url) return '';
         if (url.startsWith('http')) return url;
@@ -37,13 +41,17 @@ export function Dashboard() {
         return `${baseUrl}${cleanPath}`;
     };
 
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'Pendente': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-            case 'EmProducao': return 'bg-blue-100 text-blue-800 border-blue-200';
-            case 'Concluido': return 'bg-green-100 text-green-800 border-green-200';
-            default: return 'bg-gray-100 text-gray-800 border-gray-200';
-        }
+    // Status Helper
+    const getStatusInfo = (status: string) => {
+        const s = (status || '').toString().toLowerCase();
+        if (s.includes('pendente')) return { color: 'bg-yellow-100 text-yellow-800 border-yellow-200', icon: AlertCircle, label: 'Pendente' };
+        if (s.includes('recebido')) return { color: 'bg-blue-50 text-blue-800 border-blue-200', icon: CheckCircle, label: 'Recebido' };
+        if (s.includes('producao') || s.includes('emproducao')) return { color: 'bg-indigo-100 text-indigo-800 border-indigo-200', icon: Clock, label: 'Em Produção' };
+        if (s.includes('concluido') || s.includes('finalizado')) return { color: 'bg-emerald-100 text-emerald-800 border-emerald-200', icon: CheckCircle, label: 'Concluído' };
+        if (s.includes('entregue')) return { color: 'bg-green-100 text-green-800 border-green-200', icon: CheckCircle, label: 'Entregue' };
+        if (s.includes('cancelado')) return { color: 'bg-red-100 text-red-800 border-red-200', icon: XCircle, label: 'Cancelado' };
+
+        return { color: 'bg-slate-100 text-slate-600 border-slate-200', icon: Clock, label: status };
     };
 
     useEffect(() => {
@@ -78,47 +86,37 @@ export function Dashboard() {
 
     const isLab = user?.tipo === 'Laboratorio';
 
-    // === LÓGICA DE FILTRAGEM ===
     const trabalhosFiltrados = trabalhos.filter(t => {
-        // 1. Busca Texto
         const textoMatch =
             t.pacienteNome.toLowerCase().includes(busca.toLowerCase()) ||
             t.id.toLowerCase().includes(busca.toLowerCase()) ||
             (t.servico?.nome || '').toLowerCase().includes(busca.toLowerCase());
 
-        // 2. Status
         const statusMatch = filtroStatus === 'Todos' || t.status === filtroStatus;
-
-        // 3. Parceiro (Clínica ou Lab)
         const idParceiroNoTrabalho = isLab ? t.clinicaId : t.laboratorioId;
         const parceiroMatch = parceiroSelecionadoId === 'Todos' || idParceiroNoTrabalho === parceiroSelecionadoId;
 
-        // 4. Data (Mês)
         let dataMatch = true;
         if (filtroMes) {
-            // Compara o ano-mês de criação (ou entrega, se preferires)
-            const mesTrabalho = new Date(t.createdAt).toISOString().slice(0, 7);
+            const dataRef = t.dataEntregaPrevista || t.createdAt;
+            const mesTrabalho = new Date(dataRef).toISOString().slice(0, 7);
             dataMatch = mesTrabalho === filtroMes;
         }
 
         return textoMatch && statusMatch && parceiroMatch && dataMatch;
     });
 
-    // === CÁLCULOS DINÂMICOS (Baseados no Filtro) ===
-    // Antes usávamos 'trabalhos.', agora usamos 'trabalhosFiltrados.'
     const pendentes = trabalhosFiltrados.filter(t => t.status === 'Pendente').length;
     const emProducao = trabalhosFiltrados.filter(t => t.status === 'EmProducao').length;
     const concluidos = trabalhosFiltrados.filter(t => t.status === 'Concluido').length;
-
-    // Soma apenas o que está visível na tabela
     const totalValor = trabalhosFiltrados.reduce((acc, t) => acc + t.valorFinal, 0);
 
-    if (loading || !user) return <div className="p-8 text-slate-400">Carregando...</div>;
+    if (loading || !user) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-4 border-slate-300 border-t-slate-800 rounded-full"></div></div>;
 
     return (
-        <div className="p-8 space-y-8">
+        <div className="min-h-screen p-8 space-y-8 transition-all duration-500" style={backgroundStyle}>
 
-            {/* === BANNER INSTITUCIONAL === */}
+            {/* Banner */}
             <div className="relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-100">
                 <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
                     <div className="flex items-center gap-6">
@@ -147,7 +145,7 @@ export function Dashboard() {
                     <button
                         onClick={() => navigate('/trabalhos/novo')}
                         className="group flex items-center gap-3 rounded-2xl px-8 py-4 text-base font-bold text-white shadow-xl transition-all hover:-translate-y-1 hover:shadow-2xl"
-                        style={{ backgroundColor: primaryColor, boxShadow: `0 10px 30px -10px ${primaryColor}` }}
+                        style={{ backgroundColor: primaryColor, boxShadow: `0 10px 30px -10px ${primaryColor}60` }}
                     >
                         <div className="rounded-full bg-white/20 p-1 group-hover:bg-white/30 transition">
                             <Plus className="h-6 w-6" />
@@ -157,41 +155,50 @@ export function Dashboard() {
                 </div>
             </div>
 
-            {/* Cards de Estatística (AGORA DINÂMICOS) */}
+            {/* Cards de Estatística (Ícones Limpos) */}
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                {/* Faturamento */}
                 <div className="relative overflow-hidden rounded-2xl bg-white p-6 shadow-sm border border-slate-100 group hover:border-slate-200 transition">
                     <div className="flex items-center justify-between">
                         <div>
-                            {/* Texto muda para indicar que é um filtro */}
                             <p className="text-xs font-bold uppercase text-slate-400">
                                 {busca || filtroStatus !== 'Todos' || filtroMes ? 'Faturamento (Filtrado)' : 'Faturamento Total'}
                             </p>
                             <h3 className="mt-2 text-2xl font-black text-slate-900">{formatCurrency(totalValor)}</h3>
                         </div>
-                        <div className="rounded-xl p-3" style={{ backgroundColor: `${primaryColor}15`, color: primaryColor }}>
-                            {isLab ? <TrendingUp className="h-6 w-6" /> : <DollarSign className="h-6 w-6" />}
+                        {/* Ícone sem fundo */}
+                        <div style={{ color: primaryColor }}>
+                            {isLab ? <TrendingUp className="h-8 w-8" /> : <DollarSign className="h-8 w-8" />}
                         </div>
                     </div>
                     <div className="absolute bottom-0 left-0 h-1 w-full" style={{ backgroundColor: primaryColor }}></div>
                 </div>
 
-                <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100">
-                    <div className="flex items-center justify-between">
-                        <div><p className="text-xs font-bold uppercase text-slate-400">{isLab ? 'Novos' : 'Aguardando'}</p><h3 className="mt-2 text-2xl font-black text-slate-900">{pendentes}</h3></div>
-                        <div className="rounded-xl bg-orange-50 p-3 text-orange-500"><AlertCircle className="h-6 w-6" /></div>
+                {/* Pendentes (Laranja) */}
+                <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between">
+                    <div>
+                        <p className="text-xs font-bold uppercase text-slate-400">{isLab ? 'Novos' : 'Aguardando'}</p>
+                        <h3 className="mt-2 text-2xl font-black text-slate-900">{pendentes}</h3>
                     </div>
+                    <AlertCircle className="h-8 w-8 text-orange-500" />
                 </div>
-                <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100">
-                    <div className="flex items-center justify-between">
-                        <div><p className="text-xs font-bold uppercase text-slate-400">Em Produção</p><h3 className="mt-2 text-2xl font-black text-slate-900">{emProducao}</h3></div>
-                        <div className="rounded-xl bg-purple-50 p-3 text-purple-500"><Clock className="h-6 w-6" /></div>
+
+                {/* Em Produção (Azul) */}
+                <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between">
+                    <div>
+                        <p className="text-xs font-bold uppercase text-slate-400">Em Produção</p>
+                        <h3 className="mt-2 text-2xl font-black text-slate-900">{emProducao}</h3>
                     </div>
+                    <Clock className="h-8 w-8 text-blue-600" />
                 </div>
-                <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100">
-                    <div className="flex items-center justify-between">
-                        <div><p className="text-xs font-bold uppercase text-slate-400">{isLab ? 'Concluídos' : 'Prontos'}</p><h3 className="mt-2 text-2xl font-black text-slate-900">{concluidos}</h3></div>
-                        <div className="rounded-xl bg-emerald-50 p-3 text-emerald-500"><CheckCircle className="h-6 w-6" /></div>
+
+                {/* Concluídos (Verde) */}
+                <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between">
+                    <div>
+                        <p className="text-xs font-bold uppercase text-slate-400">{isLab ? 'Concluídos' : 'Prontos'}</p>
+                        <h3 className="mt-2 text-2xl font-black text-slate-900">{concluidos}</h3>
                     </div>
+                    <CheckCircle className="h-8 w-8 text-emerald-500" />
                 </div>
             </div>
 
@@ -271,39 +278,45 @@ export function Dashboard() {
                         </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                        {trabalhosFiltrados.map((trabalho) => (
-                            <tr key={trabalho.id} className="hover:bg-slate-50 transition cursor-pointer group" onClick={() => navigate(`/trabalhos/${trabalho.id}`)}>
-                                <td className="px-6 py-4">
-                                    <span className="font-bold text-slate-900 block">{trabalho.pacienteNome}</span>
-                                    <span className="text-xs text-slate-400 font-mono">#{trabalho.id.substring(0, 8)}</span>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <div className="font-semibold text-slate-700">{trabalho.servico?.nome || 'Personalizado'}</div>
-                                    <div className="text-xs text-slate-500">{trabalho.dentes ? `Dentes: ${trabalho.dentes}` : ''}</div>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-2">
-                                        <div className="h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: primaryColor }}>
-                                            {(isLab ? trabalho.clinica?.nome : trabalho.laboratorio?.nome)?.charAt(0)}
+                        {trabalhosFiltrados.map((trabalho) => {
+                            const statusInfo = getStatusInfo(trabalho.status);
+                            return (
+                                <tr key={trabalho.id} className="hover:bg-slate-50 transition cursor-pointer group" onClick={() => navigate(`/trabalhos/${trabalho.id}`)}>
+                                    <td className="px-6 py-4">
+                                        <span className="font-bold text-slate-900 block">{trabalho.pacienteNome}</span>
+                                        <span className="text-xs text-slate-400 font-mono">#{trabalho.id.substring(0, 8)}</span>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="font-semibold text-slate-700">{trabalho.servico?.nome || 'Personalizado'}</div>
+                                        <div className="text-xs text-slate-500">{trabalho.dentes ? `Dentes: ${trabalho.dentes}` : ''}</div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center gap-2">
+                                            <div className="h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: primaryColor }}>
+                                                {(isLab ? trabalho.clinica?.nome : trabalho.laboratorio?.nome)?.charAt(0)}
+                                            </div>
+                                            <span className="font-medium">{isLab ? trabalho.clinica?.nome : trabalho.laboratorio?.nome}</span>
                                         </div>
-                                        <span className="font-medium">{isLab ? trabalho.clinica?.nome : trabalho.laboratorio?.nome}</span>
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4">
-                                    <div className="flex items-center gap-2 font-medium">
-                                        <Calendar className="h-4 w-4 text-slate-400" />
-                                        {formatDate(trabalho.dataEntregaPrevista)}
-                                    </div>
-                                </td>
-                                <td className="px-6 py-4 font-bold text-slate-900">{formatCurrency(trabalho.valorFinal)}</td>
-                                <td className="px-6 py-4">
-                                    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold ${getStatusColor(trabalho.status)}`}>{trabalho.status}</span>
-                                </td>
-                                <td className="px-6 py-4 text-right">
-                                    <ArrowRight className="h-4 w-4 text-slate-300 ml-auto group-hover:text-slate-600 transition" />
-                                </td>
-                            </tr>
-                        ))}
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center gap-2 font-medium">
+                                            <Calendar className="h-4 w-4 text-slate-400" />
+                                            {formatDate(trabalho.dataEntregaPrevista)}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 font-bold text-slate-900">{formatCurrency(trabalho.valorFinal)}</td>
+                                    <td className="px-6 py-4">
+                                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold ${statusInfo.color}`}>
+                                            <statusInfo.icon className="h-3 w-3" />
+                                            {statusInfo.label}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 text-right">
+                                        <ArrowRight className="h-4 w-4 text-slate-300 ml-auto group-hover:text-slate-600 transition" />
+                                    </td>
+                                </tr>
+                            );
+                        })}
                         </tbody>
                     </table>
                 )}

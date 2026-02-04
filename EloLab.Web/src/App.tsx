@@ -7,7 +7,8 @@ import { Services } from "./pages/Services";
 import { Partners } from "./pages/Partners";
 import { Profile } from './pages/Profile';
 import { PrintJob } from "./pages/PrintJob";
-import { Layout } from './components/Layout'; // <--- Import Novo
+import { Layout } from './components/Layout';
+import { PartnerDashboard } from './pages/PartnerDashboard';// <--- Import Novo
 
 function App() {
     return (
@@ -23,6 +24,7 @@ function App() {
                 <Route element={<Layout />}>
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/parceiros" element={<Partners />} />
+                    <Route path="/parceiros/:id/dashboard" element={<PartnerDashboard />} />
                     <Route path="/trabalhos/novo" element={<NewJob />} />
                     <Route path="/trabalhos/:id" element={<JobDetails />} />
                     <Route path="/servicos" element={<Services />} />
