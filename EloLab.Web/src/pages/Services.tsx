@@ -10,6 +10,12 @@ const MATERIAIS = ["Zircónia", "E-max", "Metal", "Acrílico", "Cerâmica", "Out
 export function Services() {
     // === WHITE LABEL ===
     const primaryColor = localStorage.getItem('elolab_user_color') || '#2563EB';
+
+    // Gradiente de Fundo
+    const backgroundStyle = {
+        background: `linear-gradient(180deg, ${primaryColor}40 0%, #f8fafc 100%)`,
+        backgroundColor: '#f8fafc'
+    };
     // ===================
 
     const [servicos, setServicos] = useState<Servico[]>([]);
@@ -98,7 +104,7 @@ export function Services() {
     if (loading) return <div className="p-8 text-slate-400">Carregando serviços...</div>;
 
     return (
-        <div className="p-8">
+        <div className="min-h-screen p-8 transition-all duration-500" style={backgroundStyle}>
             <div className="mb-8">
                 <h1 className="text-3xl font-bold text-slate-900">Serviços & Preços</h1>
                 <p className="text-slate-500">Gerencie o seu catálogo de serviços.</p>

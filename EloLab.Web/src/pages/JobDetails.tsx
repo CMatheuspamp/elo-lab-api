@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
-import { supabase } from '../services/supabase'; // <--- Importante: Teu cliente Supabase
+import { supabase } from '../services/supabase';
 import {
     ArrowLeft, Building2, CheckCircle, FileText, Loader2, Play,
     Package, Euro, Paperclip, UploadCloud, Trash2, Send, MessageSquare,
@@ -31,8 +31,18 @@ export function JobDetails() {
     const { id } = useParams();
     const navigate = useNavigate();
 
-    // === WHITE LABEL ===
-    const primaryColor = localStorage.getItem('elolab_user_color') || '#2563EB';
+    // =========================================================================
+    // 🎨 IMERSÃO TOTAL (Identidade do Laboratório Parceiro)
+    // =========================================================================
+    // Começa com uma cor padrão, mas vai mudar assim que carregarmos os dados do Lab
+    const [brandColor, setBrandColor] = useState('#2563EB');
+
+    // O Background reage dinamicamente ao 'brandColor'
+    const backgroundStyle = {
+        background: `linear-gradient(180deg, ${brandColor}40 0%, #f8fafc 100%)`,
+        backgroundColor: '#f8fafc'
+    };
+    // =========================================================================
 
     // Utilitários de URL
     const getBaseUrl = () => {
@@ -62,7 +72,6 @@ export function JobDetails() {
     const [uploading, setUploading] = useState(false);
     const [sendingMsg, setSendingMsg] = useState(false);
 
-    // Inputs
     const [novoTexto, setNovoTexto] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -71,82 +80,63 @@ export function JobDetails() {
         loadData();
     }, [id, navigate]);
 
-    // =========================================================
-    // ⚡ LÓGICA REALTIME (SUBSTITUI O POLLING)
-    // =========================================================
+    // Realtime Chat
     useEffect(() => {
         if (!id) return;
-
-        // Inscreve no canal específico deste trabalho
         const channel = supabase
             .channel(`chat_trabalho_${id}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',           // Escutar apenas novas mensagens
-                    schema: 'public',
-                    table: 'mensagens',
-                    filter: `trabalho_id=eq.${id}` // Filtro crucial de segurança/performance
-                },
-                (payload) => {
-                    // O Payload vem com nomes da coluna do DB (snake_case)
-                    // Precisamos converter para o formato do frontend (camelCase)
-                    const novaDoDB = payload.new as any;
-
-                    const novaMsgFormatada: Mensagem = {
-                        id: novaDoDB.id,
-                        texto: novaDoDB.conteudo, // Mapeia 'conteudo' (DB) para 'texto' (Front)
-                        nomeRemetente: novaDoDB.nome_remetente,
-                        remetenteId: novaDoDB.remetente_id,
-                        createdAt: novaDoDB.created_at
-                    };
-
-                    setMensagens((current) => [...current, novaMsgFormatada]);
-                }
-            )
+            .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'mensagens', filter: `trabalho_id=eq.${id}` }, (payload) => {
+                const novaDoDB = payload.new as any;
+                const novaMsgFormatada: Mensagem = {
+                    id: novaDoDB.id,
+                    texto: novaDoDB.conteudo,
+                    nomeRemetente: novaDoDB.nome_remetente,
+                    remetenteId: novaDoDB.remetente_id,
+                    createdAt: novaDoDB.created_at
+                };
+                setMensagens((current) => [...current, novaMsgFormatada]);
+            })
             .subscribe();
-
-        // Remove a subscrição quando sair da página
-        return () => {
-            supabase.removeChannel(channel);
-        };
+        return () => { supabase.removeChannel(channel); };
     }, [id]);
 
-    // Scroll automático para a última mensagem
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [mensagens]);
 
     async function loadData() {
         try {
+            // 1. Quem sou eu?
             const meRes = await api.get('/Auth/me');
             const dadosUser = meRes.data;
-            const myId = dadosUser.meusDados.usuarioId || dadosUser.id;
-            setMeuId(myId);
+            setMeuId(dadosUser.meusDados.usuarioId || dadosUser.id);
             setSouLaboratorio(dadosUser.tipo === 'Laboratorio');
 
+            // 2. Carregar o Trabalho
             const workResponse = await api.get(`/Trabalhos/${id}`);
-            setTrabalho(workResponse.data);
+            const workData = workResponse.data;
+            setTrabalho(workData);
 
+            // === 🎨 APLICA A IDENTIDADE DO LABORATÓRIO ===
+            // Aqui está a mágica: Verificamos a cor do laboratório deste trabalho específico
+            if (workData.laboratorio && workData.laboratorio.corPrimaria) {
+                setBrandColor(workData.laboratorio.corPrimaria);
+            } else if (dadosUser.tipo === 'Laboratorio') {
+                // Se eu sou o lab e não veio cor no objeto, uso a minha do localstorage como fallback
+                setBrandColor(localStorage.getItem('elolab_user_color') || '#2563EB');
+            }
+            // ============================================
+
+            // 3. Carregar Anexos e STL
             try {
                 const filesResponse = await api.get(`/Anexos/trabalho/${id}`);
                 setAnexos(filesResponse.data);
-
-                // Auto-selecionar STL
-                const first3D = filesResponse.data.find((a: Anexo) =>
-                    a.nomeArquivo.toLowerCase().endsWith('.stl') ||
-                    a.nomeArquivo.toLowerCase().endsWith('.obj')
-                );
-                if (first3D) {
-                    setStlParaVisualizar(getFullUrl(first3D.url));
-                } else if (workResponse.data.arquivoUrl?.match(/\.(stl|obj)$/i)) {
-                    setStlParaVisualizar(getFullUrl(workResponse.data.arquivoUrl));
-                }
+                const first3D = filesResponse.data.find((a: Anexo) => a.nomeArquivo.toLowerCase().endsWith('.stl') || a.nomeArquivo.toLowerCase().endsWith('.obj'));
+                if (first3D) setStlParaVisualizar(getFullUrl(first3D.url));
+                else if (workData.arquivoUrl?.match(/\.(stl|obj)$/i)) setStlParaVisualizar(getFullUrl(workData.arquivoUrl));
             } catch (e) { console.log("Sem anexos"); }
 
-            // Carrega histórico inicial via API
             await loadMensagens(true);
-
         } catch (error: any) {
             console.error(error);
             setErroCarregamento("Não foi possível carregar os detalhes.");
@@ -160,18 +150,14 @@ export function JobDetails() {
         try {
             const msgResponse = await api.get(`/Mensagens/trabalho/${id}`);
             setMensagens(msgResponse.data);
-        } catch (err) {
-            if(showError) console.error("Erro ao carregar mensagens");
-        }
+        } catch (err) { if(showError) console.error("Erro mensagens"); }
     }
 
     async function changeStatus(novoStatus: string) {
         if (!trabalho) return;
         setUpdating(true);
         try {
-            await api.patch(`/Trabalhos/${trabalho.id}/status`, JSON.stringify(novoStatus), {
-                headers: { 'Content-Type': 'application/json' }
-            });
+            await api.patch(`/Trabalhos/${trabalho.id}/status`, JSON.stringify(novoStatus), { headers: { 'Content-Type': 'application/json' } });
             setTrabalho({ ...trabalho, status: novoStatus as any });
         } catch (error) { alert('Erro ao atualizar status'); }
         finally { setUpdating(false); }
@@ -179,27 +165,22 @@ export function JobDetails() {
 
     function getFileIcon(nome: string) {
         const ext = nome.split('.').pop()?.toLowerCase();
-        if (['stl', 'obj', 'ply'].includes(ext || '')) return <FileBox className="h-5 w-5" style={{ color: primaryColor }} />;
+        if (['stl', 'obj', 'ply'].includes(ext || '')) return <FileBox className="h-5 w-5" style={{ color: brandColor }} />;
         if (['jpg', 'png', 'jpeg'].includes(ext || '')) return <ImageIcon className="h-5 w-5 text-purple-600" />;
         return <File className="h-5 w-5 text-slate-400" />;
     }
 
     async function handleFileSelect(event: React.ChangeEvent<HTMLInputElement>) {
-        if (!event.target.files || event.target.files.length === 0 || !trabalho) return;
+        if (!event.target.files?.length || !trabalho) return;
         const file = event.target.files[0];
         setUploading(true);
-
         const formData = new FormData();
         formData.append('trabalhoId', trabalho.id);
         formData.append('arquivo', file);
-
         try {
             await api.post('/Anexos/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-
-            // Recarrega lista para garantir sync
             const filesResponse = await api.get(`/Anexos/trabalho/${trabalho.id}`);
             setAnexos(filesResponse.data);
-
             if(file.name.match(/\.(stl|obj)$/i)) {
                 const novoAnexo = filesResponse.data.find((a: Anexo) => a.nomeArquivo === file.name);
                 if (novoAnexo) setStlParaVisualizar(getFullUrl(novoAnexo.url));
@@ -213,10 +194,8 @@ export function JobDetails() {
         if(!novoTexto.trim() || !trabalho) return;
         setSendingMsg(true);
         try {
-            // Envia para API (que salva no banco -> Supabase dispara evento -> Realtime atualiza a UI)
             await api.post('/Mensagens', { trabalhoId: trabalho.id, texto: novoTexto });
             setNovoTexto('');
-            // Não precisamos chamar loadMensagens() aqui, o Realtime vai fazer isso!
         } catch(error) { console.error(error); }
         finally { setSendingMsg(false); }
     }
@@ -227,9 +206,7 @@ export function JobDetails() {
             await api.delete(`/Anexos/${anexoId}`);
             setAnexos(anexos.filter(a => a.id !== anexoId));
             const anexoDeletado = anexos.find(a => a.id === anexoId);
-            if(anexoDeletado && stlParaVisualizar && getFullUrl(anexoDeletado.url) === stlParaVisualizar) {
-                setStlParaVisualizar(null);
-            }
+            if(anexoDeletado && stlParaVisualizar && getFullUrl(anexoDeletado.url) === stlParaVisualizar) setStlParaVisualizar(null);
         } catch (error) { alert("Erro ao excluir."); }
     }
 
@@ -241,13 +218,13 @@ export function JobDetails() {
     const isConcluido = trabalho.status === 'Concluido';
 
     return (
-        <div className="min-h-screen bg-slate-50 p-6 pb-20">
+        <div className="min-h-screen p-8 transition-all duration-500" style={backgroundStyle}>
             <div className="mx-auto max-w-7xl">
                 <button onClick={() => navigate('/dashboard')} className="mb-6 flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-800 transition">
                     <ArrowLeft className="h-4 w-4" /> Voltar ao Dashboard
                 </button>
 
-                {/* Cabeçalho */}
+                {/* Card do Topo */}
                 <div className="mb-8 flex flex-col justify-between gap-6 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm md:flex-row md:items-center">
                     <div>
                         <div className="flex items-center gap-4">
@@ -255,17 +232,23 @@ export function JobDetails() {
                             <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-mono font-medium text-slate-500">#{trabalho.id.substring(0, 8)}</span>
                         </div>
                         <div className="mt-2 flex items-center gap-4 text-slate-500">
-                            <span className="flex items-center gap-1.5"><Building2 className="h-4 w-4" style={{ color: primaryColor }}/> {trabalho.clinica?.nome || 'Clínica Parceira'}</span>
+                            <span className="flex items-center gap-1.5"><Building2 className="h-4 w-4" style={{ color: brandColor }}/> {trabalho.clinica?.nome || 'Clínica Parceira'}</span>
                             <span className="hidden md:inline text-slate-300">|</span>
                             <span className="flex items-center gap-1.5"><User className="h-4 w-4"/> {trabalho.laboratorio?.nome || 'Meu Lab'}</span>
                         </div>
                     </div>
 
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 flex-wrap">
                         <button onClick={() => window.open(`/print/job/${trabalho.id}`, '_blank')} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 shadow-sm transition"><Printer className="h-5 w-5" /></button>
-                        {!souLaboratorio && <div className="flex items-center gap-2 rounded-xl bg-slate-100 px-6 py-3 text-sm font-bold text-slate-600 border border-slate-200">Status: {trabalho.status}</div>}
+
+                        {!souLaboratorio && (
+                            <div className="flex items-center gap-2 rounded-xl bg-slate-50 px-6 py-3 text-sm font-bold text-slate-600 border border-slate-200">
+                                Status: {trabalho.status}
+                            </div>
+                        )}
+
                         {souLaboratorio && isPendente && (
-                            <button onClick={() => changeStatus('EmProducao')} disabled={updating} className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5 disabled:opacity-50" style={{ backgroundColor: primaryColor, boxShadow: `0 4px 14px ${primaryColor}40` }}>
+                            <button onClick={() => changeStatus('EmProducao')} disabled={updating} className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5 disabled:opacity-50" style={{ backgroundColor: brandColor, boxShadow: `0 4px 14px ${brandColor}40` }}>
                                 {updating ? <Loader2 className="animate-spin h-5 w-5"/> : <Play className="h-5 w-5" />} Iniciar Produção
                             </button>
                         )}
@@ -310,7 +293,7 @@ export function JobDetails() {
                                 <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-400"><Paperclip className="h-4 w-4" /> Arquivos</h3>
                                 <div className="flex gap-2">
                                     <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".pdf,.jpg,.jpeg,.png,.stl,.obj" />
-                                    <button disabled={uploading} onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 rounded-lg bg-indigo-50 px-4 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-100 transition disabled:opacity-50" style={{ color: primaryColor, backgroundColor: `${primaryColor}10` }}>{uploading ? <Loader2 className="h-3 w-3 animate-spin"/> : <UploadCloud className="h-3 w-3" />} Upload</button>
+                                    <button disabled={uploading} onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 rounded-lg bg-indigo-50 px-4 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-100 transition disabled:opacity-50" style={{ color: brandColor, backgroundColor: `${brandColor}10` }}>{uploading ? <Loader2 className="h-3 w-3 animate-spin"/> : <UploadCloud className="h-3 w-3" />} Upload</button>
                                 </div>
                             </div>
                             {anexos.length === 0 ? (
@@ -355,14 +338,14 @@ export function JobDetails() {
                         </div>
 
                         <div className="flex h-[500px] flex-col rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                            <div className="border-b border-slate-100 bg-slate-50/80 p-4 backdrop-blur-sm"><h3 className="flex items-center gap-2 text-sm font-bold text-slate-700"><MessageSquare className="h-4 w-4" style={{ color: primaryColor }} /> Chat</h3></div>
+                            <div className="border-b border-slate-100 bg-slate-50/80 p-4 backdrop-blur-sm"><h3 className="flex items-center gap-2 text-sm font-bold text-slate-700"><MessageSquare className="h-4 w-4" style={{ color: brandColor }} /> Chat</h3></div>
                             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/30">
                                 {mensagens.length === 0 && <div className="flex flex-col items-center justify-center h-full text-slate-400"><MessageSquare className="h-8 w-8 mb-2 opacity-20" /><p className="text-xs">Sem mensagens.</p></div>}
                                 {mensagens.map(msg => {
                                     const isMe = msg.remetenteId === meuId;
                                     return (
                                         <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                            <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${isMe ? 'text-white rounded-tr-sm' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-sm'}`} style={isMe ? { backgroundColor: primaryColor } : {}}><p>{msg.texto}</p></div>
+                                            <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${isMe ? 'text-white rounded-tr-sm' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-sm'}`} style={isMe ? { backgroundColor: brandColor } : {}}><p>{msg.texto}</p></div>
                                             <span className="mt-1 px-1 text-[10px] font-medium text-slate-400">{isMe ? 'Você' : msg.nomeRemetente} • {new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                                         </div>
                                     );
@@ -371,8 +354,8 @@ export function JobDetails() {
                             </div>
                             <form onSubmit={handleSendMessage} className="border-t border-slate-100 p-3 bg-white">
                                 <div className="flex items-center gap-2">
-                                    <input type="text" value={novoTexto} onChange={e => setNovoTexto(e.target.value)} placeholder="Digite..." className="flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:bg-white" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
-                                    <button type="submit" disabled={sendingMsg || !novoTexto.trim()} className="flex h-10 w-10 items-center justify-center rounded-full text-white disabled:opacity-50 transition shadow-sm hover:shadow-md" style={{ backgroundColor: primaryColor }}>{sendingMsg ? <Loader2 className="h-4 w-4 animate-spin"/> : <Send className="h-4 w-4 ml-0.5" />}</button>
+                                    <input type="text" value={novoTexto} onChange={e => setNovoTexto(e.target.value)} placeholder="Digite..." className="flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:bg-white" onFocus={(e) => e.target.style.borderColor = brandColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
+                                    <button type="submit" disabled={sendingMsg || !novoTexto.trim()} className="flex h-10 w-10 items-center justify-center rounded-full text-white disabled:opacity-50 transition shadow-sm hover:shadow-md" style={{ backgroundColor: brandColor }}>{sendingMsg ? <Loader2 className="h-4 w-4 animate-spin"/> : <Send className="h-4 w-4 ml-0.5" />}</button>
                                 </div>
                             </form>
                         </div>
