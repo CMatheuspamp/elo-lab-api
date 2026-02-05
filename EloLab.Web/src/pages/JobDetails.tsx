@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
+import { supabase } from '../services/supabase'; // <--- Importante: Teu cliente Supabase
 import {
     ArrowLeft, Building2, CheckCircle, FileText, Loader2, Play,
     Package, Euro, Paperclip, UploadCloud, Trash2, Send, MessageSquare,
@@ -32,11 +33,8 @@ export function JobDetails() {
 
     // === WHITE LABEL ===
     const primaryColor = localStorage.getItem('elolab_user_color') || '#2563EB';
-    // ===================
 
-    // =========================================================================
-    // CORREÇÃO DA PORTA (DINÂMICA)
-    // =========================================================================
+    // Utilitários de URL
     const getBaseUrl = () => {
         const baseURL = api.defaults.baseURL || '';
         return baseURL.replace(/\/api\/?$/, '');
@@ -48,58 +46,81 @@ export function JobDetails() {
         const cleanPath = url.startsWith('/') ? url : `/${url}`;
         return `${getBaseUrl()}${cleanPath}`;
     }
-    // =========================================================================
 
-    // Estados de Dados
+    // Estados
     const [trabalho, setTrabalho] = useState<Trabalho | null>(null);
     const [anexos, setAnexos] = useState<Anexo[]>([]);
     const [mensagens, setMensagens] = useState<Mensagem[]>([]);
-
-    // Estado do Visualizador 3D
     const [stlParaVisualizar, setStlParaVisualizar] = useState<string | null>(null);
-
-    // Auth e Permissões
     const [meuId, setMeuId] = useState<string>('');
     const [souLaboratorio, setSouLaboratorio] = useState(false);
 
-    // Estados de UI
+    // Loading & UI
     const [loading, setLoading] = useState(true);
     const [erroCarregamento, setErroCarregamento] = useState('');
     const [updating, setUpdating] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [sendingMsg, setSendingMsg] = useState(false);
 
-    // Inputs e Refs
+    // Inputs
     const [novoTexto, setNovoTexto] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
-
-    const prevMensagensLength = useRef(0);
 
     useEffect(() => {
         loadData();
     }, [id, navigate]);
 
+    // =========================================================
+    // ⚡ LÓGICA REALTIME (SUBSTITUI O POLLING)
+    // =========================================================
     useEffect(() => {
         if (!id) return;
-        const interval = setInterval(() => {
-            loadMensagens(false);
-        }, 3000);
-        return () => clearInterval(interval);
+
+        // Inscreve no canal específico deste trabalho
+        const channel = supabase
+            .channel(`chat_trabalho_${id}`)
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',           // Escutar apenas novas mensagens
+                    schema: 'public',
+                    table: 'mensagens',
+                    filter: `trabalho_id=eq.${id}` // Filtro crucial de segurança/performance
+                },
+                (payload) => {
+                    // O Payload vem com nomes da coluna do DB (snake_case)
+                    // Precisamos converter para o formato do frontend (camelCase)
+                    const novaDoDB = payload.new as any;
+
+                    const novaMsgFormatada: Mensagem = {
+                        id: novaDoDB.id,
+                        texto: novaDoDB.conteudo, // Mapeia 'conteudo' (DB) para 'texto' (Front)
+                        nomeRemetente: novaDoDB.nome_remetente,
+                        remetenteId: novaDoDB.remetente_id,
+                        createdAt: novaDoDB.created_at
+                    };
+
+                    setMensagens((current) => [...current, novaMsgFormatada]);
+                }
+            )
+            .subscribe();
+
+        // Remove a subscrição quando sair da página
+        return () => {
+            supabase.removeChannel(channel);
+        };
     }, [id]);
 
+    // Scroll automático para a última mensagem
     useEffect(() => {
-        if (mensagens.length > prevMensagensLength.current) {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-        }
-        prevMensagensLength.current = mensagens.length;
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [mensagens]);
 
     async function loadData() {
         try {
             const meRes = await api.get('/Auth/me');
             const dadosUser = meRes.data;
-
             const myId = dadosUser.meusDados.usuarioId || dadosUser.id;
             setMeuId(myId);
             setSouLaboratorio(dadosUser.tipo === 'Laboratorio');
@@ -111,25 +132,24 @@ export function JobDetails() {
                 const filesResponse = await api.get(`/Anexos/trabalho/${id}`);
                 setAnexos(filesResponse.data);
 
-                // Auto-selecionar o primeiro STL
+                // Auto-selecionar STL
                 const first3D = filesResponse.data.find((a: Anexo) =>
                     a.nomeArquivo.toLowerCase().endsWith('.stl') ||
                     a.nomeArquivo.toLowerCase().endsWith('.obj')
                 );
-
                 if (first3D) {
                     setStlParaVisualizar(getFullUrl(first3D.url));
-                } else if (workResponse.data.arquivoUrl && (workResponse.data.arquivoUrl.endsWith('.stl') || workResponse.data.arquivoUrl.endsWith('.obj'))) {
+                } else if (workResponse.data.arquivoUrl?.match(/\.(stl|obj)$/i)) {
                     setStlParaVisualizar(getFullUrl(workResponse.data.arquivoUrl));
                 }
+            } catch (e) { console.log("Sem anexos"); }
 
-            } catch (e) { console.log("Sem anexos ou erro ao buscar anexos"); }
-
+            // Carrega histórico inicial via API
             await loadMensagens(true);
 
         } catch (error: any) {
             console.error(error);
-            setErroCarregamento("Não foi possível carregar os detalhes. Verifique o ID.");
+            setErroCarregamento("Não foi possível carregar os detalhes.");
         } finally {
             setLoading(false);
         }
@@ -153,14 +173,10 @@ export function JobDetails() {
                 headers: { 'Content-Type': 'application/json' }
             });
             setTrabalho({ ...trabalho, status: novoStatus as any });
-        } catch (error) {
-            alert('Erro ao atualizar status');
-        } finally {
-            setUpdating(false);
-        }
+        } catch (error) { alert('Erro ao atualizar status'); }
+        finally { setUpdating(false); }
     }
 
-    // Função para ícones de arquivo com cor da marca
     function getFileIcon(nome: string) {
         const ext = nome.split('.').pop()?.toLowerCase();
         if (['stl', 'obj', 'ply'].includes(ext || '')) return <FileBox className="h-5 w-5" style={{ color: primaryColor }} />;
@@ -180,20 +196,16 @@ export function JobDetails() {
         try {
             await api.post('/Anexos/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 
+            // Recarrega lista para garantir sync
             const filesResponse = await api.get(`/Anexos/trabalho/${trabalho.id}`);
             setAnexos(filesResponse.data);
 
-            if(file.name.toLowerCase().endsWith('.stl') || file.name.toLowerCase().endsWith('.obj')) {
+            if(file.name.match(/\.(stl|obj)$/i)) {
                 const novoAnexo = filesResponse.data.find((a: Anexo) => a.nomeArquivo === file.name);
                 if (novoAnexo) setStlParaVisualizar(getFullUrl(novoAnexo.url));
             }
-
-        } catch (error) {
-            alert("Erro ao enviar arquivo.");
-        } finally {
-            setUploading(false);
-            if (fileInputRef.current) fileInputRef.current.value = '';
-        }
+        } catch (error) { alert("Erro ao enviar arquivo."); }
+        finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
     }
 
     async function handleSendMessage(e: React.FormEvent) {
@@ -201,14 +213,12 @@ export function JobDetails() {
         if(!novoTexto.trim() || !trabalho) return;
         setSendingMsg(true);
         try {
+            // Envia para API (que salva no banco -> Supabase dispara evento -> Realtime atualiza a UI)
             await api.post('/Mensagens', { trabalhoId: trabalho.id, texto: novoTexto });
             setNovoTexto('');
-            loadMensagens();
-        } catch(error) {
-            console.error(error);
-        } finally {
-            setSendingMsg(false);
-        }
+            // Não precisamos chamar loadMensagens() aqui, o Realtime vai fazer isso!
+        } catch(error) { console.error(error); }
+        finally { setSendingMsg(false); }
     }
 
     async function handleDeleteAnexo(anexoId: string) {
@@ -223,19 +233,8 @@ export function JobDetails() {
         } catch (error) { alert("Erro ao excluir."); }
     }
 
-    if (loading) {
-        return <div className="flex h-screen items-center justify-center text-slate-400"><Loader2 className="animate-spin" /></div>;
-    }
-
-    if (!trabalho || erroCarregamento) {
-        return (
-            <div className="flex h-screen flex-col items-center justify-center gap-4 text-slate-500">
-                <AlertCircle className="h-10 w-10 text-red-400" />
-                <p>{erroCarregamento || "Trabalho não encontrado."}</p>
-                <button onClick={() => navigate('/dashboard')} className="text-blue-600 hover:underline">Voltar ao Dashboard</button>
-            </div>
-        );
-    }
+    if (loading) return <div className="flex h-screen items-center justify-center text-slate-400"><Loader2 className="animate-spin" /></div>;
+    if (!trabalho || erroCarregamento) return <div className="flex h-screen flex-col items-center justify-center gap-4 text-slate-500"><AlertCircle className="h-10 w-10 text-red-400" /><p>{erroCarregamento}</p><button onClick={() => navigate('/dashboard')} className="text-blue-600 hover:underline">Voltar</button></div>;
 
     const isPendente = trabalho.status === 'Pendente';
     const isProducao = trabalho.status === 'EmProducao';
@@ -244,202 +243,92 @@ export function JobDetails() {
     return (
         <div className="min-h-screen bg-slate-50 p-6 pb-20">
             <div className="mx-auto max-w-7xl">
-
                 <button onClick={() => navigate('/dashboard')} className="mb-6 flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-800 transition">
                     <ArrowLeft className="h-4 w-4" /> Voltar ao Dashboard
                 </button>
 
-                {/* Header */}
+                {/* Cabeçalho */}
                 <div className="mb-8 flex flex-col justify-between gap-6 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm md:flex-row md:items-center">
                     <div>
                         <div className="flex items-center gap-4">
                             <h1 className="text-3xl font-bold text-slate-900">{trabalho.pacienteNome}</h1>
-                            <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-mono font-medium text-slate-500">
-                                #{trabalho.id.substring(0, 8)}
-                            </span>
+                            <span className="rounded-full bg-slate-100 px-3 py-1 text-sm font-mono font-medium text-slate-500">#{trabalho.id.substring(0, 8)}</span>
                         </div>
                         <div className="mt-2 flex items-center gap-4 text-slate-500">
-                            <span className="flex items-center gap-1.5">
-                                <Building2 className="h-4 w-4" style={{ color: primaryColor }}/>
-                                {trabalho.clinica?.nome || 'Clínica Parceira'}
-                            </span>
+                            <span className="flex items-center gap-1.5"><Building2 className="h-4 w-4" style={{ color: primaryColor }}/> {trabalho.clinica?.nome || 'Clínica Parceira'}</span>
                             <span className="hidden md:inline text-slate-300">|</span>
                             <span className="flex items-center gap-1.5"><User className="h-4 w-4"/> {trabalho.laboratorio?.nome || 'Meu Lab'}</span>
                         </div>
                     </div>
 
-                    {/* Workflow Actions */}
                     <div className="flex gap-3">
-                        <button
-                            onClick={() => window.open(`/print/job/${trabalho.id}`, '_blank')}
-                            className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 shadow-sm transition"
-                            title="Imprimir Guia de Trabalho"
-                        >
-                            <Printer className="h-5 w-5" />
-                        </button>
-
-                        {!souLaboratorio && (
-                            <div className="flex items-center gap-2 rounded-xl bg-slate-100 px-6 py-3 text-sm font-bold text-slate-600 border border-slate-200">
-                                Status: {trabalho.status}
-                            </div>
-                        )}
-
+                        <button onClick={() => window.open(`/print/job/${trabalho.id}`, '_blank')} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 shadow-sm transition"><Printer className="h-5 w-5" /></button>
+                        {!souLaboratorio && <div className="flex items-center gap-2 rounded-xl bg-slate-100 px-6 py-3 text-sm font-bold text-slate-600 border border-slate-200">Status: {trabalho.status}</div>}
                         {souLaboratorio && isPendente && (
-                            <button
-                                onClick={() => changeStatus('EmProducao')}
-                                disabled={updating}
-                                className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5 disabled:opacity-50"
-                                style={{ backgroundColor: primaryColor, boxShadow: `0 4px 14px ${primaryColor}40` }}
-                            >
+                            <button onClick={() => changeStatus('EmProducao')} disabled={updating} className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5 disabled:opacity-50" style={{ backgroundColor: primaryColor, boxShadow: `0 4px 14px ${primaryColor}40` }}>
                                 {updating ? <Loader2 className="animate-spin h-5 w-5"/> : <Play className="h-5 w-5" />} Iniciar Produção
                             </button>
                         )}
                         {souLaboratorio && isProducao && (
-                            // Mantemos verde por ser "Sucesso/Conclusão", mas com estilo consistente
                             <button onClick={() => changeStatus('Concluido')} disabled={updating} className="flex items-center gap-2 rounded-xl bg-green-600 px-6 py-3 text-sm font-bold text-white hover:bg-green-700 shadow-lg shadow-green-200 transition disabled:opacity-50">
                                 {updating ? <Loader2 className="animate-spin h-5 w-5"/> : <CheckCircle className="h-5 w-5" />} Concluir Trabalho
                             </button>
                         )}
-                        {isConcluido && (
-                            <button disabled className="flex items-center gap-2 rounded-xl bg-slate-100 px-6 py-3 text-sm font-bold text-slate-500 cursor-default border border-slate-200">
-                                <Package className="h-5 w-5" /> Pronto para Entrega
-                            </button>
-                        )}
+                        {isConcluido && <button disabled className="flex items-center gap-2 rounded-xl bg-slate-100 px-6 py-3 text-sm font-bold text-slate-500 cursor-default border border-slate-200"><Package className="h-5 w-5" /> Pronto para Entrega</button>}
                     </div>
                 </div>
 
-                {/* Grid Content */}
                 <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-
-                    {/* COLUNA ESQUERDA (2/3) */}
+                    {/* Coluna Esquerda */}
                     <div className="lg:col-span-2 space-y-8">
-
-                        {/* === ÁREA DO VISUALIZADOR 3D === */}
-                        {stlParaVisualizar ? (
+                        {stlParaVisualizar && (
                             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-900 shadow-sm">
                                 <div className="p-2 bg-slate-900 text-white flex justify-between items-center px-4">
-                                    <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2">
-                                        <FileBox className="h-4 w-4" /> Visualização 3D
-                                    </span>
+                                    <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-2"><FileBox className="h-4 w-4" /> Visualização 3D</span>
                                     <button onClick={() => setStlParaVisualizar(null)} className="text-xs hover:text-red-400">Fechar</button>
                                 </div>
                                 <StlViewer url={stlParaVisualizar} />
                             </div>
-                        ) : null}
+                        )}
 
-                        {/* Ficha Técnica */}
                         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                            <h3 className="mb-6 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-400">
-                                <FileText className="h-4 w-4" /> Ficha Técnica
-                            </h3>
+                            <h3 className="mb-6 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-400"><FileText className="h-4 w-4" /> Ficha Técnica</h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                 <div className="space-y-6">
-                                    <div>
-                                        <label className="text-xs font-semibold text-slate-400 uppercase">Serviço Solicitado</label>
-                                        <p className="mt-1 text-lg font-medium text-slate-900">{trabalho.servico?.nome || 'Serviço Personalizado'}</p>
-                                    </div>
+                                    <div><label className="text-xs font-semibold text-slate-400 uppercase">Serviço</label><p className="mt-1 text-lg font-medium text-slate-900">{trabalho.servico?.nome || 'Personalizado'}</p></div>
                                     <div className="flex gap-8">
-                                        <div>
-                                            <label className="text-xs font-semibold text-slate-400 uppercase">Dentes</label>
-                                            <p className="mt-1 text-xl font-bold text-slate-900">{trabalho.dentes || '-'}</p>
-                                        </div>
-                                        <div>
-                                            <label className="text-xs font-semibold text-slate-400 uppercase">Cor / Escala</label>
-                                            <div className="mt-1 flex items-center gap-2">
-                                                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-700 border border-slate-200">
-                                                    {trabalho.corDente || '?'}
-                                                </span>
-                                            </div>
-                                        </div>
+                                        <div><label className="text-xs font-semibold text-slate-400 uppercase">Dentes</label><p className="mt-1 text-xl font-bold text-slate-900">{trabalho.dentes || '-'}</p></div>
+                                        <div><label className="text-xs font-semibold text-slate-400 uppercase">Cor</label><div className="mt-1 flex items-center gap-2"><span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-sm font-bold text-slate-700 border border-slate-200">{trabalho.corDente || '?'}</span></div></div>
                                     </div>
                                 </div>
-                                <div className="rounded-xl bg-slate-50 p-5 border border-slate-100">
-                                    <label className="mb-2 flex items-center gap-2 text-xs font-bold text-slate-500 uppercase">
-                                        <AlertCircle className="h-3 w-3" /> Observações
-                                    </label>
-                                    <p className="text-sm leading-relaxed text-slate-600">
-                                        {trabalho.descricaoPersonalizada || 'Nenhuma observação adicional.'}
-                                    </p>
-                                </div>
+                                <div className="rounded-xl bg-slate-50 p-5 border border-slate-100"><label className="mb-2 flex items-center gap-2 text-xs font-bold text-slate-500 uppercase"><AlertCircle className="h-3 w-3" /> Observações</label><p className="text-sm leading-relaxed text-slate-600">{trabalho.descricaoPersonalizada || 'Nenhuma observação.'}</p></div>
                             </div>
                         </div>
 
-                        {/* Arquivos */}
                         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                             <div className="mb-6 flex items-center justify-between">
-                                <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-400">
-                                    <Paperclip className="h-4 w-4" /> Arquivos do Caso
-                                </h3>
+                                <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-slate-400"><Paperclip className="h-4 w-4" /> Arquivos</h3>
                                 <div className="flex gap-2">
                                     <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" accept=".pdf,.jpg,.jpeg,.png,.stl,.obj" />
-                                    <button
-                                        disabled={uploading}
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="flex items-center gap-2 rounded-lg bg-indigo-50 px-4 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-100 transition disabled:opacity-50"
-                                        style={{ color: primaryColor, backgroundColor: `${primaryColor}10` }}
-                                    >
-                                        {uploading ? <Loader2 className="h-3 w-3 animate-spin"/> : <UploadCloud className="h-3 w-3" />}
-                                        Upload
-                                    </button>
+                                    <button disabled={uploading} onClick={() => fileInputRef.current?.click()} className="flex items-center gap-2 rounded-lg bg-indigo-50 px-4 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-100 transition disabled:opacity-50" style={{ color: primaryColor, backgroundColor: `${primaryColor}10` }}>{uploading ? <Loader2 className="h-3 w-3 animate-spin"/> : <UploadCloud className="h-3 w-3" />} Upload</button>
                                 </div>
                             </div>
-
                             {anexos.length === 0 ? (
-                                <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-100 bg-slate-50/50 py-10">
-                                    <UploadCloud className="h-10 w-10 text-slate-300 mb-2" />
-                                    <p className="text-sm font-medium text-slate-400">Nenhum arquivo anexado</p>
-                                    <p className="text-xs text-slate-300">Arraste ou clique no botão acima</p>
-                                </div>
+                                <div className="flex flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-100 bg-slate-50/50 py-10"><UploadCloud className="h-10 w-10 text-slate-300 mb-2" /><p className="text-sm font-medium text-slate-400">Nenhum arquivo</p></div>
                             ) : (
                                 <div className="space-y-3">
                                     {anexos.map(anexo => {
-                                        const is3D = anexo.nomeArquivo.toLowerCase().endsWith('.stl') ||
-                                            anexo.nomeArquivo.toLowerCase().endsWith('.obj');
-
+                                        const is3D = anexo.nomeArquivo.match(/\.(stl|obj)$/i);
                                         return (
                                             <div key={anexo.id} className="group relative flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50 p-3 transition hover:bg-white hover:shadow-sm">
                                                 <div className="flex items-center gap-3 overflow-hidden">
-                                                    <div className="rounded-lg bg-white p-2 text-slate-400 shadow-sm border border-slate-100">
-                                                        {getFileIcon(anexo.nomeArquivo)}
-                                                    </div>
-                                                    <div className="flex flex-col overflow-hidden">
-                                                        <span className="truncate text-sm font-bold text-slate-700">{anexo.nomeArquivo}</span>
-                                                        <span className="text-[10px] text-slate-400">{new Date(anexo.createdAt).toLocaleDateString()}</span>
-                                                    </div>
+                                                    <div className="rounded-lg bg-white p-2 text-slate-400 shadow-sm border border-slate-100">{getFileIcon(anexo.nomeArquivo)}</div>
+                                                    <div className="flex flex-col overflow-hidden"><span className="truncate text-sm font-bold text-slate-700">{anexo.nomeArquivo}</span><span className="text-[10px] text-slate-400">{new Date(anexo.createdAt).toLocaleDateString()}</span></div>
                                                 </div>
-
                                                 <div className="flex items-center gap-2">
-                                                    {is3D && (
-                                                        <button
-                                                            onClick={() => setStlParaVisualizar(getFullUrl(anexo.url))}
-                                                            className="rounded-lg bg-white p-2 text-slate-500 shadow-sm border border-slate-100 transition"
-                                                            style={{ borderColor: 'transparent' }}
-                                                            onMouseEnter={(e) => { e.currentTarget.style.color = primaryColor; e.currentTarget.style.borderColor = primaryColor; }}
-                                                            onMouseLeave={(e) => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.borderColor = '#e2e8f0'; }}
-                                                            title="Visualizar 3D"
-                                                        >
-                                                            <Eye className="h-4 w-4" />
-                                                        </button>
-                                                    )}
-
-                                                    <a
-                                                        href={getFullUrl(anexo.url)}
-                                                        target="_blank"
-                                                        rel="noreferrer"
-                                                        download
-                                                        className="rounded-lg bg-white p-2 text-slate-500 shadow-sm border border-slate-100 hover:text-green-600 hover:border-green-200 transition"
-                                                        title="Baixar Arquivo"
-                                                    >
-                                                        <Download className="h-4 w-4" />
-                                                    </a>
-
-                                                    <button
-                                                        onClick={() => handleDeleteAnexo(anexo.id)}
-                                                        className="rounded-lg bg-white p-2 text-slate-300 shadow-sm border border-slate-100 hover:text-red-500 hover:border-red-200 transition"
-                                                        title="Excluir"
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </button>
+                                                    {is3D && <button onClick={() => setStlParaVisualizar(getFullUrl(anexo.url))} className="rounded-lg bg-white p-2 text-slate-500 shadow-sm border border-slate-100 transition hover:text-blue-600"><Eye className="h-4 w-4" /></button>}
+                                                    <a href={getFullUrl(anexo.url)} download target="_blank" rel="noreferrer" className="rounded-lg bg-white p-2 text-slate-500 shadow-sm border border-slate-100 hover:text-green-600"><Download className="h-4 w-4" /></a>
+                                                    <button onClick={() => handleDeleteAnexo(anexo.id)} className="rounded-lg bg-white p-2 text-slate-300 shadow-sm border border-slate-100 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
                                                 </div>
                                             </div>
                                         );
@@ -449,93 +338,41 @@ export function JobDetails() {
                         </div>
                     </div>
 
-                    {/* COLUNA DIREITA (1/3) */}
+                    {/* Coluna Direita (Chat + Infos) */}
                     <div className="space-y-6">
-                        {/* Planeamento */}
                         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                             <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-400">Planeamento</h3>
                             <div className="space-y-4">
                                 <div className="flex items-center gap-4 rounded-xl border border-orange-100 bg-orange-50 p-4">
-                                    <div className="rounded-full bg-white p-2 text-orange-500 shadow-sm">
-                                        <Calendar className="h-5 w-5" />
-                                    </div>
-                                    <div>
-                                        <p className="text-xs font-bold uppercase text-orange-800 opacity-70">Entrega</p>
-                                        <p className="font-bold text-slate-900">
-                                            {new Date(trabalho.dataEntregaPrevista).toLocaleDateString('pt-BR')}
-                                        </p>
-                                    </div>
+                                    <div className="rounded-full bg-white p-2 text-orange-500 shadow-sm"><Calendar className="h-5 w-5" /></div>
+                                    <div><p className="text-xs font-bold uppercase text-orange-800 opacity-70">Entrega</p><p className="font-bold text-slate-900">{new Date(trabalho.dataEntregaPrevista).toLocaleDateString('pt-BR')}</p></div>
                                 </div>
                                 <div className="flex items-center gap-4 rounded-xl border border-emerald-100 bg-emerald-50 p-4">
-                                    <div className="rounded-full bg-white p-2 text-emerald-500 shadow-sm">
-                                        <Euro className="h-5 w-5" />
-                                    </div>
-                                    <div>
-                                        <p className="text-xs font-bold uppercase text-emerald-800 opacity-70">Valor Total</p>
-                                        <p className="font-bold text-slate-900">
-                                            {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(trabalho.valorFinal)}
-                                        </p>
-                                    </div>
+                                    <div className="rounded-full bg-white p-2 text-emerald-500 shadow-sm"><Euro className="h-5 w-5" /></div>
+                                    <div><p className="text-xs font-bold uppercase text-emerald-800 opacity-70">Total</p><p className="font-bold text-slate-900">{new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(trabalho.valorFinal)}</p></div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Chat */}
                         <div className="flex h-[500px] flex-col rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                            <div className="border-b border-slate-100 bg-slate-50/80 p-4 backdrop-blur-sm">
-                                <h3 className="flex items-center gap-2 text-sm font-bold text-slate-700">
-                                    <MessageSquare className="h-4 w-4" style={{ color: primaryColor }} />
-                                    Chat do Pedido
-                                </h3>
-                            </div>
-
+                            <div className="border-b border-slate-100 bg-slate-50/80 p-4 backdrop-blur-sm"><h3 className="flex items-center gap-2 text-sm font-bold text-slate-700"><MessageSquare className="h-4 w-4" style={{ color: primaryColor }} /> Chat</h3></div>
                             <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50/30">
-                                {mensagens.length === 0 && (
-                                    <div className="flex flex-col items-center justify-center h-full text-slate-400">
-                                        <MessageSquare className="h-8 w-8 mb-2 opacity-20" />
-                                        <p className="text-xs text-center">Nenhuma mensagem ainda.</p>
-                                    </div>
-                                )}
+                                {mensagens.length === 0 && <div className="flex flex-col items-center justify-center h-full text-slate-400"><MessageSquare className="h-8 w-8 mb-2 opacity-20" /><p className="text-xs">Sem mensagens.</p></div>}
                                 {mensagens.map(msg => {
                                     const isMe = msg.remetenteId === meuId;
                                     return (
                                         <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                                            <div
-                                                className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
-                                                    isMe ? 'text-white rounded-tr-sm' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-sm'
-                                                }`}
-                                                style={isMe ? { backgroundColor: primaryColor } : {}}
-                                            >
-                                                <p>{msg.texto}</p>
-                                            </div>
-                                            <span className="mt-1 px-1 text-[10px] font-medium text-slate-400">
-                                                {isMe ? 'Você' : msg.nomeRemetente} • {new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                                            </span>
+                                            <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${isMe ? 'text-white rounded-tr-sm' : 'bg-white border border-slate-200 text-slate-700 rounded-tl-sm'}`} style={isMe ? { backgroundColor: primaryColor } : {}}><p>{msg.texto}</p></div>
+                                            <span className="mt-1 px-1 text-[10px] font-medium text-slate-400">{isMe ? 'Você' : msg.nomeRemetente} • {new Date(msg.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                                         </div>
-                                    )
+                                    );
                                 })}
                                 <div ref={messagesEndRef} />
                             </div>
-
                             <form onSubmit={handleSendMessage} className="border-t border-slate-100 p-3 bg-white">
                                 <div className="flex items-center gap-2">
-                                    <input
-                                        type="text"
-                                        value={novoTexto}
-                                        onChange={e => setNovoTexto(e.target.value)}
-                                        placeholder="Digite uma mensagem..."
-                                        className="flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition placeholder:text-slate-400"
-                                        onFocus={(e) => e.target.style.borderColor = primaryColor}
-                                        onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
-                                    />
-                                    <button
-                                        type="submit"
-                                        disabled={sendingMsg || !novoTexto.trim()}
-                                        className="flex h-10 w-10 items-center justify-center rounded-full text-white disabled:opacity-50 transition shadow-sm hover:shadow-md"
-                                        style={{ backgroundColor: primaryColor }}
-                                    >
-                                        {sendingMsg ? <Loader2 className="h-4 w-4 animate-spin"/> : <Send className="h-4 w-4 ml-0.5" />}
-                                    </button>
+                                    <input type="text" value={novoTexto} onChange={e => setNovoTexto(e.target.value)} placeholder="Digite..." className="flex-1 rounded-full border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm outline-none transition focus:bg-white" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
+                                    <button type="submit" disabled={sendingMsg || !novoTexto.trim()} className="flex h-10 w-10 items-center justify-center rounded-full text-white disabled:opacity-50 transition shadow-sm hover:shadow-md" style={{ backgroundColor: primaryColor }}>{sendingMsg ? <Loader2 className="h-4 w-4 animate-spin"/> : <Send className="h-4 w-4 ml-0.5" />}</button>
                                 </div>
                             </form>
                         </div>
