@@ -3,7 +3,7 @@ import { api } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import {
     TrendingUp, AlertCircle, Clock, CheckCircle,
-    DollarSign, Filter, Search, Plus, Calendar, ArrowRight, XCircle
+    Filter, Search, Plus, Calendar, ArrowRight
 } from 'lucide-react';
 import type { UserSession, Trabalho } from '../types';
 
@@ -13,19 +13,19 @@ export function Dashboard() {
     const [loading, setLoading] = useState(true);
     const navigate = useNavigate();
 
-    // === WHITE LABEL ===
+    // === WHITE LABEL (Cor do próprio Lab) ===
     const primaryColor = localStorage.getItem('elolab_user_color') || '#2563EB';
     const logoUrl = localStorage.getItem('elolab_user_logo');
 
-    // Gradiente
+    // Gradiente de Fundo
     const backgroundStyle = {
         background: `linear-gradient(180deg, ${primaryColor}40 0%, #f8fafc 100%)`,
         backgroundColor: '#f8fafc'
     };
 
     // Filtros
-    const [parceiroSelecionadoId, setParceiroSelecionadoId] = useState('Todos');
-    const [parceirosParaFiltro, setParceirosParaFiltro] = useState<any[]>([]);
+    const [clinicaSelecionadaId, setClinicaSelecionadaId] = useState('Todos');
+    const [clinicasParaFiltro, setClinicasParaFiltro] = useState<any[]>([]);
     const [busca, setBusca] = useState('');
     const [filtroStatus, setFiltroStatus] = useState('Todos');
     const [filtroMes, setFiltroMes] = useState('');
@@ -41,16 +41,11 @@ export function Dashboard() {
         return `${baseUrl}${cleanPath}`;
     };
 
-    // Status Helper
     const getStatusInfo = (status: string) => {
         const s = (status || '').toString().toLowerCase();
         if (s.includes('pendente')) return { color: 'bg-yellow-100 text-yellow-800 border-yellow-200', icon: AlertCircle, label: 'Pendente' };
-        if (s.includes('recebido')) return { color: 'bg-blue-50 text-blue-800 border-blue-200', icon: CheckCircle, label: 'Recebido' };
         if (s.includes('producao') || s.includes('emproducao')) return { color: 'bg-indigo-100 text-indigo-800 border-indigo-200', icon: Clock, label: 'Em Produção' };
         if (s.includes('concluido') || s.includes('finalizado')) return { color: 'bg-emerald-100 text-emerald-800 border-emerald-200', icon: CheckCircle, label: 'Concluído' };
-        if (s.includes('entregue')) return { color: 'bg-green-100 text-green-800 border-green-200', icon: CheckCircle, label: 'Entregue' };
-        if (s.includes('cancelado')) return { color: 'bg-red-100 text-red-800 border-red-200', icon: XCircle, label: 'Cancelado' };
-
         return { color: 'bg-slate-100 text-slate-600 border-slate-200', icon: Clock, label: status };
     };
 
@@ -59,14 +54,22 @@ export function Dashboard() {
             try {
                 const meResponse = await api.get('/Auth/me');
                 const userData = meResponse.data;
+
+                // 🚨 SEGURANÇA: Se for Clínica, sai daqui imediatamente!
+                if (userData.tipo === 'Clinica') {
+                    navigate('/parceiros');
+                    return;
+                }
+
                 setUser(userData);
 
+                // Carrega trabalhos do Laboratório
                 const trabalhosResponse = await api.get('/Trabalhos');
                 setTrabalhos(trabalhosResponse.data);
 
-                let urlParceiros = userData.tipo === 'Laboratorio' ? '/Clinicas' : '/Laboratorios';
-                const parceirosRes = await api.get(urlParceiros);
-                setParceirosParaFiltro(parceirosRes.data);
+                // Carrega apenas as clínicas parceiras para o filtro
+                const clinicasRes = await api.get('/Clinicas');
+                setClinicasParaFiltro(clinicasRes.data);
 
             } catch (error) {
                 console.error(error);
@@ -75,16 +78,14 @@ export function Dashboard() {
             }
         }
         loadData();
-    }, []);
+    }, [navigate]);
 
     function limparFiltros() {
         setBusca('');
         setFiltroStatus('Todos');
-        setParceiroSelecionadoId('Todos');
+        setClinicaSelecionadaId('Todos');
         setFiltroMes('');
     }
-
-    const isLab = user?.tipo === 'Laboratorio';
 
     const trabalhosFiltrados = trabalhos.filter(t => {
         const textoMatch =
@@ -93,8 +94,9 @@ export function Dashboard() {
             (t.servico?.nome || '').toLowerCase().includes(busca.toLowerCase());
 
         const statusMatch = filtroStatus === 'Todos' || t.status === filtroStatus;
-        const idParceiroNoTrabalho = isLab ? t.clinicaId : t.laboratorioId;
-        const parceiroMatch = parceiroSelecionadoId === 'Todos' || idParceiroNoTrabalho === parceiroSelecionadoId;
+
+        // Filtro específico para selecionar clínica parceira
+        const clinicaMatch = clinicaSelecionadaId === 'Todos' || t.clinicaId === clinicaSelecionadaId;
 
         let dataMatch = true;
         if (filtroMes) {
@@ -103,7 +105,7 @@ export function Dashboard() {
             dataMatch = mesTrabalho === filtroMes;
         }
 
-        return textoMatch && statusMatch && parceiroMatch && dataMatch;
+        return textoMatch && statusMatch && clinicaMatch && dataMatch;
     });
 
     const pendentes = trabalhosFiltrados.filter(t => t.status === 'Pendente').length;
@@ -136,7 +138,7 @@ export function Dashboard() {
                             <div className="flex items-center gap-2 mt-1">
                                 <span className="inline-block h-2 w-2 rounded-full animate-pulse bg-green-500"></span>
                                 <p className="text-slate-500 font-medium text-sm uppercase tracking-wide">
-                                    {isLab ? 'Ambiente de Gestão & Produção' : 'Portal do Parceiro'}
+                                    Ambiente de Gestão & Produção
                                 </p>
                             </div>
                         </div>
@@ -155,9 +157,8 @@ export function Dashboard() {
                 </div>
             </div>
 
-            {/* Cards de Estatística (Ícones Limpos) */}
+            {/* Cards de Estatística */}
             <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                {/* Faturamento */}
                 <div className="relative overflow-hidden rounded-2xl bg-white p-6 shadow-sm border border-slate-100 group hover:border-slate-200 transition">
                     <div className="flex items-center justify-between">
                         <div>
@@ -166,24 +167,19 @@ export function Dashboard() {
                             </p>
                             <h3 className="mt-2 text-2xl font-black text-slate-900">{formatCurrency(totalValor)}</h3>
                         </div>
-                        {/* Ícone sem fundo */}
-                        <div style={{ color: primaryColor }}>
-                            {isLab ? <TrendingUp className="h-8 w-8" /> : <DollarSign className="h-8 w-8" />}
-                        </div>
+                        <div style={{ color: primaryColor }}><TrendingUp className="h-8 w-8" /></div>
                     </div>
                     <div className="absolute bottom-0 left-0 h-1 w-full" style={{ backgroundColor: primaryColor }}></div>
                 </div>
 
-                {/* Pendentes (Laranja) */}
                 <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-bold uppercase text-slate-400">{isLab ? 'Novos' : 'Aguardando'}</p>
+                        <p className="text-xs font-bold uppercase text-slate-400">Novos</p>
                         <h3 className="mt-2 text-2xl font-black text-slate-900">{pendentes}</h3>
                     </div>
                     <AlertCircle className="h-8 w-8 text-orange-500" />
                 </div>
 
-                {/* Em Produção (Azul) */}
                 <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between">
                     <div>
                         <p className="text-xs font-bold uppercase text-slate-400">Em Produção</p>
@@ -192,10 +188,9 @@ export function Dashboard() {
                     <Clock className="h-8 w-8 text-blue-600" />
                 </div>
 
-                {/* Concluídos (Verde) */}
                 <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-bold uppercase text-slate-400">{isLab ? 'Concluídos' : 'Prontos'}</p>
+                        <p className="text-xs font-bold uppercase text-slate-400">Concluídos</p>
                         <h3 className="mt-2 text-2xl font-black text-slate-900">{concluidos}</h3>
                     </div>
                     <CheckCircle className="h-8 w-8 text-emerald-500" />
@@ -236,10 +231,10 @@ export function Dashboard() {
                         </select>
                     </div>
                     <div>
-                        <label className="mb-1.5 block text-xs font-bold text-slate-400 uppercase">{isLab ? 'Clínica' : 'Laboratório'}</label>
-                        <select value={parceiroSelecionadoId} onChange={e => setParceiroSelecionadoId(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-sm font-medium outline-none focus:bg-white transition">
-                            <option value="Todos">Todos</option>
-                            {parceirosParaFiltro.map((p: any) => (
+                        <label className="mb-1.5 block text-xs font-bold text-slate-400 uppercase">Clínica</label>
+                        <select value={clinicaSelecionadaId} onChange={e => setClinicaSelecionadaId(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 p-2.5 text-sm font-medium outline-none focus:bg-white transition">
+                            <option value="Todos">Todas</option>
+                            {clinicasParaFiltro.map((p: any) => (
                                 <option key={p.id} value={p.id}>{p.nome}</option>
                             ))}
                         </select>
@@ -270,7 +265,7 @@ export function Dashboard() {
                         <tr>
                             <th className="px-6 py-4">Paciente</th>
                             <th className="px-6 py-4">Serviço</th>
-                            <th className="px-6 py-4">Parceiro</th>
+                            <th className="px-6 py-4">Clínica</th>
                             <th className="px-6 py-4">Entrega</th>
                             <th className="px-6 py-4">Valor</th>
                             <th className="px-6 py-4">Status</th>
@@ -293,9 +288,9 @@ export function Dashboard() {
                                     <td className="px-6 py-4">
                                         <div className="flex items-center gap-2">
                                             <div className="h-6 w-6 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ backgroundColor: primaryColor }}>
-                                                {(isLab ? trabalho.clinica?.nome : trabalho.laboratorio?.nome)?.charAt(0)}
+                                                {trabalho.clinica?.nome?.charAt(0)}
                                             </div>
-                                            <span className="font-medium">{isLab ? trabalho.clinica?.nome : trabalho.laboratorio?.nome}</span>
+                                            <span className="font-medium">{trabalho.clinica?.nome}</span>
                                         </div>
                                     </td>
                                     <td className="px-6 py-4">

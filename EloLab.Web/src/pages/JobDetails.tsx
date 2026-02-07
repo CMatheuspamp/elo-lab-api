@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { supabase } from '../services/supabase';
+import { PageContainer } from '../components/PageContainer'; // <--- IMPORTANTE: Layout Padrão
 import {
     ArrowLeft, Building2, CheckCircle, FileText, Loader2, Play,
     Package, Euro, Paperclip, UploadCloud, Trash2, Send, MessageSquare,
@@ -34,15 +35,7 @@ export function JobDetails() {
     // =========================================================================
     // 🎨 IMERSÃO TOTAL (Identidade do Laboratório Parceiro)
     // =========================================================================
-    // Começa com uma cor padrão, mas vai mudar assim que carregarmos os dados do Lab
     const [brandColor, setBrandColor] = useState('#2563EB');
-
-    // O Background reage dinamicamente ao 'brandColor'
-    const backgroundStyle = {
-        background: `linear-gradient(180deg, ${brandColor}40 0%, #f8fafc 100%)`,
-        backgroundColor: '#f8fafc'
-    };
-    // =========================================================================
 
     // Utilitários de URL
     const getBaseUrl = () => {
@@ -118,11 +111,11 @@ export function JobDetails() {
             setTrabalho(workData);
 
             // === 🎨 APLICA A IDENTIDADE DO LABORATÓRIO ===
-            // Aqui está a mágica: Verificamos a cor do laboratório deste trabalho específico
+            // Se o trabalho tem dados do laboratório e cor, usa essa cor (Imersão para a Clínica)
             if (workData.laboratorio && workData.laboratorio.corPrimaria) {
                 setBrandColor(workData.laboratorio.corPrimaria);
             } else if (dadosUser.tipo === 'Laboratorio') {
-                // Se eu sou o lab e não veio cor no objeto, uso a minha do localstorage como fallback
+                // Se eu sou o laboratório vendo meu próprio trabalho, uso minha cor configurada
                 setBrandColor(localStorage.getItem('elolab_user_color') || '#2563EB');
             }
             // ============================================
@@ -210,6 +203,17 @@ export function JobDetails() {
         } catch (error) { alert("Erro ao excluir."); }
     }
 
+    // === NAVEGAÇÃO INTELIGENTE (CORREÇÃO SOLICITADA) ===
+    function handleBack() {
+        if (!souLaboratorio && trabalho?.laboratorioId) {
+            // Se sou Clínica, volto para o dashboard específico desse parceiro
+            navigate(`/parceiros/${trabalho.laboratorioId}/dashboard`);
+        } else {
+            // Se sou Laboratório, volto para o meu dashboard geral
+            navigate('/dashboard');
+        }
+    }
+
     if (loading) return <div className="flex h-screen items-center justify-center text-slate-400"><Loader2 className="animate-spin" /></div>;
     if (!trabalho || erroCarregamento) return <div className="flex h-screen flex-col items-center justify-center gap-4 text-slate-500"><AlertCircle className="h-10 w-10 text-red-400" /><p>{erroCarregamento}</p><button onClick={() => navigate('/dashboard')} className="text-blue-600 hover:underline">Voltar</button></div>;
 
@@ -218,10 +222,17 @@ export function JobDetails() {
     const isConcluido = trabalho.status === 'Concluido';
 
     return (
-        <div className="min-h-screen p-8 transition-all duration-500" style={backgroundStyle}>
+        // Usando PageContainer para manter o padrão visual e a imersão da cor
+        <PageContainer primaryColor={brandColor}>
+
             <div className="mx-auto max-w-7xl">
-                <button onClick={() => navigate('/dashboard')} className="mb-6 flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-800 transition">
-                    <ArrowLeft className="h-4 w-4" /> Voltar ao Dashboard
+                {/* Botão de Voltar com a nova lógica */}
+                <button
+                    onClick={handleBack}
+                    className="mb-6 flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-800 transition"
+                >
+                    <ArrowLeft className="h-4 w-4" />
+                    {souLaboratorio ? 'Voltar ao Dashboard' : 'Voltar ao Painel do Parceiro'}
                 </button>
 
                 {/* Card do Topo */}
@@ -362,6 +373,6 @@ export function JobDetails() {
                     </div>
                 </div>
             </div>
-        </div>
+        </PageContainer>
     );
 }

@@ -35,30 +35,35 @@ export function Sidebar() {
 
     // === DEFINIÇÃO DOS ITENS DO MENU ===
     const menuItems = [
+        // 1. Dashboard (Aparece em primeiro SÓ para Laboratórios)
         {
             label: 'Dashboard',
             icon: LayoutDashboard,
             path: '/dashboard',
-            show: userType === 'Laboratorio' // <--- ALTERADO: Só mostra para Laboratórios
+            show: userType === 'Laboratorio'
         },
-        {
-            label: 'Novo Pedido',
-            icon: PlusCircle,
-            path: '/trabalhos/novo',
-            show: true
-        },
+        // 2. Parceiros (Para a Clínica, este será o PRIMEIRO visível)
         {
             label: 'Parceiros',
             icon: Building2,
             path: '/parceiros',
             show: true
         },
+        // 3. Novo Pedido
+        {
+            label: 'Novo Pedido',
+            icon: PlusCircle,
+            path: '/trabalhos/novo',
+            show: true
+        },
+        // 4. Serviços (Só Lab)
         {
             label: 'Serviços & Preços',
             icon: Tag,
             path: '/servicos',
             show: userType === 'Laboratorio'
         },
+        // 5. Perfil
         {
             label: 'Meu Perfil',
             icon: UserCircle,
