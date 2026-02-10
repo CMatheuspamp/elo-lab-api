@@ -4,8 +4,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { PageContainer } from '../components/PageContainer';
 import {
     ArrowLeft, Save, Loader2, Calendar, User, FileText,
-    Building2, Palette, ChevronDown, Euro, UploadCloud,
-    FileBox, Image as ImageIcon, Trash2, File as FileIcon, Smile, Calculator
+    Building2, Palette, Euro, UploadCloud,
+    FileBox, Image as ImageIcon, Trash2, File as FileIcon, Smile, Calculator, Search, X
 } from 'lucide-react';
 import type { UserSession, Servico } from '../types';
 
@@ -33,7 +33,7 @@ export function NewJob() {
     // Recupera dados passados pela navegação
     const preSelectedLabId = location.state?.preSelectedLabId;
     const preSelectedLabColor = location.state?.preSelectedLabColor;
-    const preSelectedServiceId = location.state?.preSelectedServiceId; // <--- NOVO: ID do Serviço vindo do Catálogo
+    const preSelectedServiceId = location.state?.preSelectedServiceId;
 
     const [loading, setLoading] = useState(false);
     const [user, setUser] = useState<UserSession | null>(null);
@@ -49,9 +49,15 @@ export function NewJob() {
     // Estados do Formulário
     const [parceiroSelecionadoId, setParceiroSelecionadoId] = useState(preSelectedLabId || '');
     const [paciente, setPaciente] = useState('');
-
-    // Inicia com o serviço pré-selecionado (se houver)
     const [servicoId, setServicoId] = useState(preSelectedServiceId || '');
+
+    // === NOVOS ESTADOS PARA PESQUISA (AUTOCOMPLETE) ===
+    const [buscaParceiro, setBuscaParceiro] = useState('');
+    const [mostrarListaParceiros, setMostrarListaParceiros] = useState(false);
+
+    const [buscaServico, setBuscaServico] = useState('');
+    const [mostrarListaServicos, setMostrarListaServicos] = useState(false);
+    // ==================================================
 
     // Dentes
     const [dentesSelecionados, setDentesSelecionados] = useState<string[]>([]);
@@ -66,7 +72,7 @@ export function NewJob() {
     const [obs, setObs] = useState('');
     const [arquivos, setArquivos] = useState<File[]>([]);
 
-    // === VARIÁVEIS AUXILIARES ===
+    // Variáveis Auxiliares
     const isLab = user?.tipo === 'Laboratorio';
     const isPreSelectedMode = !!preSelectedLabId && !isLab;
 
@@ -74,50 +80,50 @@ export function NewJob() {
         carregarDadosIniciais();
     }, []);
 
-    // Lógica de Cor "Camaleão"
+    // 1. Sincronizar Nome do Parceiro se já vier selecionado
     useEffect(() => {
-        if (isLab) {
-            setDynamicPrimaryColor(localStorage.getItem('elolab_user_color') || '#2563EB');
-        } else if (parceiroSelecionadoId && listaParceiros.length > 0) {
+        if (parceiroSelecionadoId && listaParceiros.length > 0) {
             const parceiro = listaParceiros.find(p => p.id === parceiroSelecionadoId);
-            if (parceiro?.corPrimaria) {
-                setDynamicPrimaryColor(parceiro.corPrimaria);
+            if (parceiro) {
+                setBuscaParceiro(parceiro.nome);
+                if (parceiro.corPrimaria) setDynamicPrimaryColor(parceiro.corPrimaria);
             }
         }
-    }, [isLab, parceiroSelecionadoId, listaParceiros]);
+    }, [parceiroSelecionadoId, listaParceiros]);
 
-    // Carregar serviços quando seleciona parceiro
+    // 2. Carregar Serviços quando Parceiro muda
     useEffect(() => {
         if (!user) return;
 
-        // Se NÃO sou Lab (sou Clínica) e tenho um parceiro selecionado
         if (!isLab && parceiroSelecionadoId) {
-            // Se NÃO veio pré-selecionado do catálogo, limpamos para garantir.
-            // Se veio, mantemos para a lógica de auto-preenchimento funcionar.
-            if (!preSelectedServiceId && !listaServicos.length) setListaServicos([]);
+            // Se mudou o parceiro e não é a carga inicial do catálogo, limpa o serviço
+            if (!preSelectedServiceId && listaServicos.length === 0) {
+                setListaServicos([]);
+                setServicoId('');
+                setBuscaServico('');
+                setValorUnitario('');
+            }
 
-            // CORREÇÃO: Chama o endpoint específico que lista serviços daquele Lab
             api.get(`/Servicos/laboratorio/${parceiroSelecionadoId}`)
                 .then(res => {
                     setListaServicos(res.data);
                 })
-                .catch(err => console.error("Erro ao carregar serviços do lab:", err));
+                .catch(err => console.error("Erro ao carregar serviços:", err));
         }
     }, [parceiroSelecionadoId, user, isLab]);
 
-    // === NOVO: LÓGICA PARA PREENCHER PREÇO AUTOMATICAMENTE ===
-    // Se vier do catálogo, assim que a lista carregar, preenche o preço
+    // 3. Sincronizar Nome do Serviço se já vier selecionado ou mudar
     useEffect(() => {
-        if (preSelectedServiceId && listaServicos.length > 0) {
-            const servicoEncontrado = listaServicos.find(s => s.id === preSelectedServiceId);
-            if (servicoEncontrado) {
-                setValorUnitario(servicoEncontrado.precoBase.toString());
-                setServicoId(preSelectedServiceId); // Garante a seleção no select
+        if (servicoId && listaServicos.length > 0) {
+            const s = listaServicos.find(item => item.id === servicoId);
+            if (s) {
+                setBuscaServico(s.nome);
+                setValorUnitario(s.precoBase.toString());
             }
         }
-    }, [listaServicos, preSelectedServiceId]);
+    }, [servicoId, listaServicos]);
 
-    // Lógica de Strings dos Dentes
+    // Lógica de Dentes (Mantida)
     useEffect(() => {
         if (dentesSelecionados.length === 0) {
             setDentesString('');
@@ -141,7 +147,6 @@ export function NewJob() {
         }
     }, [dentesSelecionados]);
 
-    // Cálculo do Total
     useEffect(() => {
         calcularValorTotal();
     }, [dentesString, valorUnitario, dentesSelecionados]);
@@ -178,7 +183,6 @@ export function NewJob() {
             const isUsuarioLab = resUser.data.tipo === 'Laboratorio';
 
             if (isUsuarioLab) {
-                // Se for lab, carrega os seus próprios serviços
                 api.get('/Servicos').then(res => setListaServicos(res.data));
                 const res = await api.get('/Clinicas');
                 setListaParceiros(res.data);
@@ -191,26 +195,37 @@ export function NewJob() {
         }
     }
 
-    function handleServicoChange(e: React.ChangeEvent<HTMLSelectElement>) {
-        const novoId = e.target.value;
-        setServicoId(novoId);
-        const servicoSelecionado = listaServicos.find(s => s.id === novoId);
-        if (servicoSelecionado) {
-            setValorUnitario(servicoSelecionado.precoBase.toString());
-        } else {
-            setValorUnitario('');
-            setValorTotal('');
-        }
+    // === FUNÇÕES DE SELEÇÃO INTELIGENTE ===
+    function selecionarParceiro(p: any) {
+        setParceiroSelecionadoId(p.id);
+        setBuscaParceiro(p.nome);
+        setMostrarListaParceiros(false);
+        // Limpa serviço ao mudar parceiro
+        setServicoId('');
+        setBuscaServico('');
+        setValorUnitario('');
     }
 
+    function selecionarServico(s: Servico) {
+        setServicoId(s.id);
+        setBuscaServico(s.nome);
+        setValorUnitario(s.precoBase.toString());
+        setMostrarListaServicos(false);
+    }
+
+    // Filtros de Pesquisa
+    const parceirosFiltrados = listaParceiros.filter(p =>
+        p.nome.toLowerCase().includes(buscaParceiro.toLowerCase())
+    );
+    const servicosFiltrados = listaServicos.filter(s =>
+        s.nome.toLowerCase().includes(buscaServico.toLowerCase()) ||
+        (s.material && s.material.toLowerCase().includes(buscaServico.toLowerCase()))
+    );
+
     const handleBack = () => {
-        if (isLab) {
-            navigate('/dashboard');
-        } else if (preSelectedLabId) {
-            navigate(`/portal/${preSelectedLabId}`);
-        } else {
-            navigate('/parceiros');
-        }
+        if (isLab) navigate('/dashboard');
+        else if (preSelectedLabId) navigate(`/portal/${preSelectedLabId}`);
+        else navigate('/parceiros');
     };
 
     function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -225,6 +240,7 @@ export function NewJob() {
         if (['stl', 'obj', 'ply'].includes(ext || '')) return <FileBox className="h-5 w-5" style={{ color: dynamicPrimaryColor }} />;
         return <FileIcon className="h-5 w-5 text-slate-400" />;
     }
+
     const toggleDente = (dente: string) => {
         setDentesSelecionados(prev =>
             prev.includes(dente) ? prev.filter(d => d !== dente) : [...prev, dente].sort()
@@ -272,13 +288,9 @@ export function NewJob() {
             }
             alert('✅ Pedido criado com sucesso!');
 
-            if (!isLab && preSelectedLabId) {
-                navigate(`/portal/${preSelectedLabId}`);
-            } else if (!isLab) {
-                navigate('/parceiros');
-            } else {
-                navigate('/dashboard');
-            }
+            if (!isLab && preSelectedLabId) navigate(`/portal/${preSelectedLabId}`);
+            else if (!isLab) navigate('/parceiros');
+            else navigate('/dashboard');
 
         } catch (error) {
             alert('Erro ao criar trabalho.');
@@ -294,9 +306,7 @@ export function NewJob() {
                 type="button"
                 onClick={() => toggleDente(id)}
                 className={`flex h-9 w-9 items-center justify-center rounded-full border text-xs font-bold transition-all ${
-                    selected
-                        ? 'text-white shadow-md scale-110'
-                        : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                    selected ? 'text-white shadow-md scale-110' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                 }`}
                 style={selected ? { backgroundColor: dynamicPrimaryColor, borderColor: dynamicPrimaryColor } : {}}
             >
@@ -326,7 +336,7 @@ export function NewJob() {
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-8">
-                        {/* Dados Iniciais */}
+                        {/* 1. DADOS INICIAIS (PACIENTE E PARCEIRO) */}
                         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                             <div className="md:col-span-2">
                                 <label className="mb-1.5 block text-sm font-bold text-slate-700">Nome do Paciente</label>
@@ -339,51 +349,112 @@ export function NewJob() {
                                            placeholder="Ex: Maria Silva" />
                                 </div>
                             </div>
-                            <div className="md:col-span-2">
+
+                            {/* === SELECTOR DE PARCEIRO COM PESQUISA === */}
+                            <div className="md:col-span-2 relative">
                                 <label className="mb-1.5 block text-sm font-bold" style={{ color: dynamicPrimaryColor }}>
                                     {isLab ? "Clínica (Cliente)" : "Laboratório (Parceiro)"}
                                 </label>
                                 <div className="relative">
                                     <Building2 className="absolute top-3 left-3 h-5 w-5" style={{ color: dynamicPrimaryColor }} />
 
-                                    {/* SELETOR COM TRAVA DE SEGURANÇA */}
-                                    <select
+                                    <input
+                                        type="text"
                                         required
-                                        value={parceiroSelecionadoId}
-                                        onChange={e => setParceiroSelecionadoId(e.target.value)}
+                                        value={buscaParceiro}
+                                        onChange={(e) => { setBuscaParceiro(e.target.value); setMostrarListaParceiros(true); setParceiroSelecionadoId(''); }}
+                                        onFocus={() => setMostrarListaParceiros(true)}
+                                        onBlur={() => setTimeout(() => setMostrarListaParceiros(false), 200)}
                                         disabled={isPreSelectedMode}
-                                        className={`w-full appearance-none rounded-xl border py-3 pl-10 pr-8 text-sm font-bold outline-none transition
+                                        placeholder={isLab ? "Digite para buscar a clínica..." : "Digite para buscar o laboratório..."}
+                                        className={`w-full rounded-xl border py-3 pl-10 pr-10 text-sm font-bold outline-none transition
                                             ${isPreSelectedMode ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
                                         style={{ borderColor: `${dynamicPrimaryColor}40`, backgroundColor: `${dynamicPrimaryColor}08`, color: dynamicPrimaryColor }}
-                                    >
-                                        <option value="">{isLab ? "Selecione a Clínica..." : "Selecione o Laboratório..."}</option>
-                                        {listaParceiros.map((p: any) => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                                    </select>
+                                    />
 
-                                    {!isPreSelectedMode && (
-                                        <ChevronDown className="pointer-events-none absolute right-4 top-3.5 h-4 w-4" style={{ color: dynamicPrimaryColor }} />
+                                    {/* Botão para limpar se não estiver bloqueado */}
+                                    {!isPreSelectedMode && buscaParceiro && (
+                                        <button
+                                            type="button"
+                                            onClick={() => { setBuscaParceiro(''); setParceiroSelecionadoId(''); setListaServicos([]); }}
+                                            className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"
+                                        >
+                                            <X className="h-4 w-4" />
+                                        </button>
+                                    )}
+
+                                    {/* DROPDOWN DE SUGESTÕES DE PARCEIRO */}
+                                    {mostrarListaParceiros && !isPreSelectedMode && (
+                                        <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl max-h-60 overflow-y-auto">
+                                            {parceirosFiltrados.length === 0 ? (
+                                                <div className="p-4 text-center text-sm text-slate-400">Nenhum encontrado.</div>
+                                            ) : (
+                                                parceirosFiltrados.map(p => (
+                                                    <div
+                                                        key={p.id}
+                                                        onClick={() => selecionarParceiro(p)}
+                                                        className="cursor-pointer px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition border-b border-slate-50 last:border-0 font-medium"
+                                                    >
+                                                        {p.nome}
+                                                    </div>
+                                                ))
+                                            )}
+                                        </div>
                                     )}
                                 </div>
                             </div>
                         </div>
 
-                        {/* Ficha Técnica */}
+                        {/* 2. Ficha Técnica */}
                         <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-6">
                             <h3 className="mb-5 flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-400">
                                 <FileText className="h-4 w-4"/> Ficha Técnica
                             </h3>
                             <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-                                <div className="md:col-span-2">
+
+                                {/* === SELECTOR DE SERVIÇO COM PESQUISA === */}
+                                <div className="md:col-span-2 relative">
                                     <label className="mb-1.5 block text-sm font-bold text-slate-700">Serviço</label>
                                     <div className="relative">
-                                        <select value={servicoId} onChange={handleServicoChange} disabled={!parceiroSelecionadoId && !isLab}
-                                                className="w-full appearance-none rounded-xl border border-slate-200 bg-white py-3 pl-4 pr-8 text-sm font-medium outline-none transition cursor-pointer disabled:opacity-50"
-                                                onFocus={(e) => e.target.style.borderColor = dynamicPrimaryColor}
-                                                onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}>
-                                            <option value="">Selecione o serviço...</option>
-                                            {listaServicos.map(s => <option key={s.id} value={s.id}>{s.nome} - {s.material} ({new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(s.precoBase)})</option>)}
-                                        </select>
-                                        <ChevronDown className="pointer-events-none absolute right-4 top-3.5 h-4 w-4 text-slate-400" />
+                                        <Search className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
+
+                                        <input
+                                            type="text"
+                                            value={buscaServico}
+                                            onChange={(e) => { setBuscaServico(e.target.value); setMostrarListaServicos(true); setServicoId(''); }}
+                                            onFocus={(e) => { setMostrarListaServicos(true); e.target.style.borderColor = dynamicPrimaryColor; }}
+                                            onBlur={(e) => { setTimeout(() => setMostrarListaServicos(false), 200); e.target.style.borderColor = '#e2e8f0'; }}
+                                            disabled={!parceiroSelecionadoId && !isLab}
+                                            placeholder="Digite para buscar o serviço..."
+                                            className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-10 text-sm font-medium outline-none transition disabled:opacity-50"
+                                        />
+
+                                        {/* Dropdown de Serviços */}
+                                        {mostrarListaServicos && (
+                                            <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl max-h-60 overflow-y-auto">
+                                                {servicosFiltrados.length === 0 ? (
+                                                    <div className="p-4 text-center text-sm text-slate-400">
+                                                        {!parceiroSelecionadoId && !isLab ? "Selecione um parceiro primeiro." : "Nenhum serviço encontrado."}
+                                                    </div>
+                                                ) : (
+                                                    servicosFiltrados.map(s => (
+                                                        <div
+                                                            key={s.id}
+                                                            onClick={() => selecionarServico(s)}
+                                                            className="cursor-pointer px-4 py-3 hover:bg-slate-50 transition border-b border-slate-50 last:border-0"
+                                                        >
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="font-bold text-sm text-slate-700">{s.nome}</span>
+                                                                <span className="text-xs font-bold text-slate-900 bg-slate-100 px-2 py-1 rounded">
+                                                                    {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(s.precoBase)}
+                                                                </span>
+                                                            </div>
+                                                            <div className="text-xs text-slate-400 mt-0.5">{s.material} • {s.prazoDiasUteis} dias</div>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
@@ -454,8 +525,6 @@ export function NewJob() {
 
                                 {/* LINHA UNIFICADA: Data | Unitário | Total */}
                                 <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6">
-
-                                    {/* Data */}
                                     <div>
                                         <label className="mb-1.5 block text-sm font-bold text-slate-700">Data de Entrega</label>
                                         <div className="relative">
@@ -463,8 +532,6 @@ export function NewJob() {
                                             <input required type="datetime-local" value={dataEntrega} onChange={e => setDataEntrega(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition" onFocus={(e) => e.target.style.borderColor = dynamicPrimaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
                                         </div>
                                     </div>
-
-                                    {/* Unitário */}
                                     <div>
                                         <label className="mb-1.5 block text-sm font-bold text-slate-700">Valor Unitário (€)</label>
                                         <div className="relative">
@@ -481,8 +548,6 @@ export function NewJob() {
                                             />
                                         </div>
                                     </div>
-
-                                    {/* Total */}
                                     <div>
                                         <label className="mb-1.5 block text-sm font-bold text-slate-700">Valor Total (€)</label>
                                         <div className="relative">
@@ -504,7 +569,6 @@ export function NewJob() {
                                             : `* Calculado: ${dentesSelecionados.length > 0 ? dentesSelecionados.length : 0} elemento(s) x Unitário.`}
                                     </p>
                                 </div>
-
                             </div>
                         </div>
 

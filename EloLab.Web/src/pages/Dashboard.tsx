@@ -21,7 +21,6 @@ export function Dashboard() {
     const [showCatalogue, setShowCatalogue] = useState(false);
     const [catalogoServicos, setCatalogoServicos] = useState<Servico[]>([]);
     const [servicoDetalhe, setServicoDetalhe] = useState<Servico | null>(null);
-    // ===========================
 
     // Filtros
     const [clinicaSelecionadaId, setClinicaSelecionadaId] = useState('Todos');
@@ -73,7 +72,6 @@ export function Dashboard() {
                     const currentLab = labsRes.data.find((l: any) => l.id === labId);
                     if (currentLab) setLabInfo(currentLab);
 
-                    // CARREGA SERVIÇOS PARA O CATÁLOGO (PRELOAD)
                     const servicosRes = await api.get(`/Servicos/laboratorio/${labId}`);
                     setCatalogoServicos(servicosRes.data);
 
@@ -145,7 +143,6 @@ export function Dashboard() {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="relative w-full max-w-5xl h-[85vh] bg-slate-50 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
 
-                        {/* Header do Catálogo */}
                         <div className="flex items-center justify-between p-6 bg-white border-b border-slate-100">
                             <div>
                                 <h2 className="text-2xl font-bold text-slate-900">Catálogo de Serviços</h2>
@@ -156,7 +153,6 @@ export function Dashboard() {
                             </button>
                         </div>
 
-                        {/* Conteúdo (Scrollable) */}
                         <div className="flex-1 overflow-y-auto p-6 lg:p-8">
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                                 {catalogoServicos.map(s => (
@@ -165,7 +161,6 @@ export function Dashboard() {
                                         onClick={() => setServicoDetalhe(s)}
                                         className="group cursor-pointer bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden flex flex-col"
                                     >
-                                        {/* Imagem do Card */}
                                         <div className="h-48 w-full bg-slate-100 overflow-hidden relative">
                                             {s.fotoUrl ? (
                                                 <img src={getFullUrl(s.fotoUrl)} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" alt={s.nome} />
@@ -180,7 +175,6 @@ export function Dashboard() {
                                             </div>
                                         </div>
 
-                                        {/* Informações */}
                                         <div className="p-5 flex flex-col flex-1">
                                             <h3 className="font-bold text-lg text-slate-900 mb-1 group-hover:text-blue-600 transition">{s.nome}</h3>
                                             <div className="flex items-center gap-2 text-xs text-slate-500 mb-4">
@@ -197,11 +191,10 @@ export function Dashboard() {
                         </div>
                     </div>
 
-                    {/* === MODAL DE DETALHE (OVERLAY) === */}
+                    {/* === MODAL DE DETALHE === */}
                     {servicoDetalhe && (
                         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in zoom-in duration-200">
                             <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col md:flex-row max-h-[80vh]">
-                                {/* Imagem Grande */}
                                 <div className="w-full md:w-1/2 h-64 md:h-auto bg-slate-100 relative">
                                     {servicoDetalhe.fotoUrl ? (
                                         <img src={getFullUrl(servicoDetalhe.fotoUrl)} className="h-full w-full object-cover" />
@@ -209,7 +202,6 @@ export function Dashboard() {
                                         <div className="h-full w-full flex items-center justify-center text-slate-300"><Info className="h-12 w-12"/></div>
                                     )}
                                 </div>
-                                {/* Infos */}
                                 <div className="p-8 md:w-1/2 flex flex-col">
                                     <button onClick={(e) => { e.stopPropagation(); setServicoDetalhe(null); }} className="self-end mb-4 text-slate-400 hover:text-slate-600"><X className="h-6 w-6"/></button>
 
@@ -231,7 +223,6 @@ export function Dashboard() {
                                         onClick={() => {
                                             setServicoDetalhe(null);
                                             setShowCatalogue(false);
-                                            // AQUI ESTÁ A MUDANÇA: Adicionei preSelectedServiceId
                                             navigate('/trabalhos/novo', {
                                                 state: {
                                                     preSelectedLabId: labId,
@@ -286,7 +277,7 @@ export function Dashboard() {
                         </div>
 
                         <div className="flex gap-3">
-                            {/* === NOVO BOTÃO: CATÁLOGO (Apenas para Clínica) === */}
+                            {/* BOTÃO CATÁLOGO (Apenas Clínica) */}
                             {isClinica && (
                                 <button
                                     onClick={() => setShowCatalogue(true)}
@@ -332,7 +323,6 @@ export function Dashboard() {
                         <AlertCircle className="h-8 w-8 text-orange-500" />
                     </div>
 
-                    {/* ... Restantes Cards iguais ... */}
                     <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between">
                         <div><p className="text-xs font-bold uppercase text-slate-400">Em Produção</p><h3 className="mt-2 text-2xl font-black text-slate-900">{emProducao}</h3></div>
                         <Clock className="h-8 w-8 text-blue-600" />
@@ -343,9 +333,8 @@ export function Dashboard() {
                     </div>
                 </div>
 
-                {/* Filtros e Tabela (Mantidos) */}
+                {/* Filtros */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                    {/* ... Conteúdo dos filtros igual ... */}
                     <div className="mb-6 flex items-center justify-between">
                         <h3 className="flex items-center gap-2 text-sm font-bold text-slate-700">
                             <Filter className="h-4 w-4" /> Filtros Avançados
@@ -375,6 +364,7 @@ export function Dashboard() {
                     </div>
                 </div>
 
+                {/* Tabela */}
                 <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                     <table className="w-full text-left text-sm text-slate-600">
                         <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-400 tracking-wider">
@@ -390,9 +380,21 @@ export function Dashboard() {
                                     <td className="px-6 py-4"><div className="flex items-center gap-2"><Calendar className="h-3 w-3 text-slate-400"/> {formatDate(trabalho.dataEntregaPrevista)}</div></td>
                                     <td className="px-6 py-4 font-bold">{formatCurrency(trabalho.valorFinal)}</td>
                                     <td className="px-6 py-4"><span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold ${statusInfo.color}`}><statusInfo.icon className="h-3 w-3" /> {statusInfo.label}</span></td>
-                                    <td className="px-6 py-4 text-right flex items-center justify-end gap-3">
-                                        <button onClick={(e) => handleDelete(trabalho.id, e)} className="rounded-lg p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 transition" title="Apagar Trabalho"><Trash2 className="h-4 w-4" /></button>
-                                        <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-slate-600 transition" />
+                                    <td className="px-6 py-4 text-right">
+                                        {/* CORREÇÃO DO ALINHAMENTO AQUI */}
+                                        <div className="flex items-center justify-end gap-3">
+                                            {/* === BOTÃO DE DELETE PROTEGIDO === */}
+                                            {!isClinica && (
+                                                <button
+                                                    onClick={(e) => handleDelete(trabalho.id, e)}
+                                                    className="rounded-lg p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 transition"
+                                                    title="Apagar Trabalho"
+                                                >
+                                                    <Trash2 className="h-4 w-4" />
+                                                </button>
+                                            )}
+                                            <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-slate-600 transition" />
+                                        </div>
                                     </td>
                                 </tr>
                             );
