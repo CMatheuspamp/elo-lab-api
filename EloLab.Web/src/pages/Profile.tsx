@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { api } from '../services/api';
 import { useNavigate } from 'react-router-dom';
+import { PageContainer } from '../components/PageContainer'; // <--- IMPORTADO
 import {
     User, Mail, Phone, MapPin, FileText,
     Save, Loader2, Building2, Upload, Palette, Image as ImageIcon
@@ -15,13 +16,6 @@ export function Profile() {
     // === WHITE LABEL ===
     const [primaryColor, setPrimaryColor] = useState(localStorage.getItem('elolab_user_color') || '#2563EB');
     const [logoUrl, setLogoUrl] = useState(localStorage.getItem('elolab_user_logo') || '');
-
-    // Gradiente de Fundo (Reage à mudança de cor em tempo real)
-    const backgroundStyle = {
-        background: `linear-gradient(180deg, ${primaryColor}40 0%, #f8fafc 100%)`,
-        backgroundColor: '#f8fafc'
-    };
-    // ===================
 
     const [userType, setUserType] = useState('');
     const [nome, setNome] = useState('');
@@ -122,7 +116,8 @@ export function Profile() {
     const isLab = userType === 'Laboratorio';
 
     return (
-        <div className="min-h-screen p-8 transition-all duration-500" style={backgroundStyle}>
+        // === PAGE CONTAINER ADICIONADO ===
+        <PageContainer primaryColor={primaryColor}>
             <div className="mx-auto max-w-4xl">
                 <div className="mb-8">
                     <h1 className="text-3xl font-bold text-slate-900">Meu Perfil & Marca</h1>
@@ -145,7 +140,6 @@ export function Profile() {
                                         style={{ borderColor: `${primaryColor}60` }}
                                     >
                                         {logoUrl ? (
-                                            // === USANDO getFullUrl AQUI TAMBÉM ===
                                             <img src={getFullUrl(logoUrl)} alt="Logo" className="h-full w-full object-contain p-2" />
                                         ) : (
                                             <div className="text-center text-slate-400">
@@ -276,6 +270,6 @@ export function Profile() {
                     </div>
                 </form>
             </div>
-        </div>
+        </PageContainer>
     );
 }

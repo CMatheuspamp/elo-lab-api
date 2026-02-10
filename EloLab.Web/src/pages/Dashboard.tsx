@@ -3,18 +3,18 @@ import { api } from '../services/api';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     TrendingUp, AlertCircle, Clock, CheckCircle,
-    Filter, Search, Plus, Calendar, ArrowRight, Trash2, ArrowLeft
+    Filter, Search, Plus, Calendar, ArrowRight, Trash2, ArrowLeft, Wallet // <--- Importei Wallet
 } from 'lucide-react';
 import type { UserSession, Trabalho } from '../types';
 import { PageContainer } from '../components/PageContainer';
 
 export function Dashboard() {
     const navigate = useNavigate();
-    const { labId } = useParams(); // CAPTURA O ID DA URL SE EXISTIR
+    const { labId } = useParams();
 
     const [user, setUser] = useState<UserSession | null>(null);
     const [trabalhos, setTrabalhos] = useState<Trabalho[]>([]);
-    const [labInfo, setLabInfo] = useState<any>(null); // Dados do Lab (se for visitante)
+    const [labInfo, setLabInfo] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
     // Filtros
@@ -52,30 +52,22 @@ export function Dashboard() {
 
                 const isClinica = userData.tipo === 'Clinica';
 
-                // === CORREÇÃO DE REDIRECIONAMENTO ===
-                // Se for clínica e NÃO tiver ID na URL, volta para lista.
-                // Se tiver ID, deixa passar (é o acesso ao painel do lab).
                 if (isClinica && !labId) {
                     navigate('/parceiros');
                     return;
                 }
 
-                // Carrega Trabalhos
                 const trabalhosResponse = await api.get('/Trabalhos');
                 let lista = trabalhosResponse.data;
 
-                // Lógica Específica por Tipo de Usuário
                 if (isClinica && labId) {
-                    // MODO PORTAL: Filtra trabalhos apenas deste laboratório
                     lista = lista.filter((t: Trabalho) => t.laboratorioId === labId);
 
-                    // Busca dados do Lab para cabeçalho (White Label)
                     const labsRes = await api.get('/Laboratorios');
                     const currentLab = labsRes.data.find((l: any) => l.id === labId);
                     if (currentLab) setLabInfo(currentLab);
 
                 } else {
-                    // MODO LAB: Carrega filtros de clínicas
                     const clinicasRes = await api.get('/Clinicas');
                     setClinicasParaFiltro(clinicasRes.data);
                 }
@@ -91,14 +83,12 @@ export function Dashboard() {
         loadData();
     }, [navigate, labId]);
 
-    // === FUNÇÃO DE DELETAR (NOVO) ===
     async function handleDelete(id: string, e: React.MouseEvent) {
-        e.stopPropagation(); // Não abre o detalhe do trabalho
+        e.stopPropagation();
         if (!confirm('Tem a certeza que deseja excluir este trabalho?')) return;
 
         try {
             await api.delete(`/Trabalhos/${id}`);
-            // Atualiza a lista localmente
             setTrabalhos(prev => prev.filter(t => t.id !== id));
         } catch (error) {
             alert('Erro ao excluir trabalho.');
@@ -116,10 +106,17 @@ export function Dashboard() {
 
     const isClinica = user.tipo === 'Clinica';
 
-    // === IDENTIDADE VISUAL DINÂMICA ===
+    // === CUSTOMIZAÇÃO VISUAL ===
     const primaryColor = labInfo ? (labInfo.corPrimaria || '#2563EB') : (localStorage.getItem('elolab_user_color') || '#2563EB');
     const logoUrl = labInfo ? labInfo.logoUrl : localStorage.getItem('elolab_user_logo');
     const displayName = labInfo ? labInfo.nome : user.meusDados.nome;
+
+    const displaySubtitle = isClinica ? 'Portal do Parceiro' : 'Ambiente de Gestão & Produção';
+    const labelFinanceiro = isClinica ? 'Total Investido' : 'Faturamento';
+    const labelNovos = isClinica ? 'Pendentes' : 'Novos Pedidos'; // <--- Alterado para "Pendentes"
+
+    // Ícone Dinâmico (Carteira para Clinica, Gráfico para Lab)
+    const IconFinanceiro = isClinica ? Wallet : TrendingUp;
 
     const trabalhosFiltrados = trabalhos.filter(t => {
         const textoMatch = t.pacienteNome.toLowerCase().includes(busca.toLowerCase()) || t.id.toLowerCase().includes(busca.toLowerCase()) || (t.servico?.nome || '').toLowerCase().includes(busca.toLowerCase());
@@ -143,7 +140,6 @@ export function Dashboard() {
     return (
         <PageContainer primaryColor={primaryColor}>
 
-            {/* Botão Voltar (Aparece se for Clínica no Portal) */}
             {isClinica && labId && (
                 <button onClick={() => navigate('/parceiros')} className="mb-4 flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-800 transition">
                     <ArrowLeft className="h-4 w-4" /> Voltar para Meus Laboratórios
@@ -171,7 +167,7 @@ export function Dashboard() {
                                 <div className="flex items-center gap-2 mt-1">
                                     <span className="inline-block h-2 w-2 rounded-full animate-pulse bg-green-500"></span>
                                     <p className="text-slate-500 font-medium text-sm uppercase tracking-wide">
-                                        Ambiente de Gestão & Produção
+                                        {displaySubtitle}
                                     </p>
                                 </div>
                             </div>
@@ -192,27 +188,39 @@ export function Dashboard() {
 
                 {/* Cards */}
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                    {/* Card Financeiro (Ícone e Texto Dinâmicos) */}
                     <div className="relative overflow-hidden rounded-2xl bg-white p-6 shadow-sm border border-slate-100 group hover:border-slate-200 transition">
                         <div className="flex items-center justify-between">
                             <div>
-                                <p className="text-xs font-bold uppercase text-slate-400">Faturamento</p>
+                                <p className="text-xs font-bold uppercase text-slate-400">{labelFinanceiro}</p>
                                 <h3 className="mt-2 text-2xl font-black text-slate-900">{formatCurrency(totalValor)}</h3>
                             </div>
-                            <div style={{ color: primaryColor }}><TrendingUp className="h-8 w-8" /></div>
+                            <div style={{ color: primaryColor }}><IconFinanceiro className="h-8 w-8" /></div>
                         </div>
                         <div className="absolute bottom-0 left-0 h-1 w-full" style={{ backgroundColor: primaryColor }}></div>
                     </div>
 
                     <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between">
-                        <div><p className="text-xs font-bold uppercase text-slate-400">Novos</p><h3 className="mt-2 text-2xl font-black text-slate-900">{pendentes}</h3></div>
+                        <div>
+                            <p className="text-xs font-bold uppercase text-slate-400">{labelNovos}</p>
+                            <h3 className="mt-2 text-2xl font-black text-slate-900">{pendentes}</h3>
+                        </div>
                         <AlertCircle className="h-8 w-8 text-orange-500" />
                     </div>
+
                     <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between">
-                        <div><p className="text-xs font-bold uppercase text-slate-400">Em Produção</p><h3 className="mt-2 text-2xl font-black text-slate-900">{emProducao}</h3></div>
+                        <div>
+                            <p className="text-xs font-bold uppercase text-slate-400">Em Produção</p>
+                            <h3 className="mt-2 text-2xl font-black text-slate-900">{emProducao}</h3>
+                        </div>
                         <Clock className="h-8 w-8 text-blue-600" />
                     </div>
+
                     <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between">
-                        <div><p className="text-xs font-bold uppercase text-slate-400">Concluídos</p><h3 className="mt-2 text-2xl font-black text-slate-900">{concluidos}</h3></div>
+                        <div>
+                            <p className="text-xs font-bold uppercase text-slate-400">Concluídos</p>
+                            <h3 className="mt-2 text-2xl font-black text-slate-900">{concluidos}</h3>
+                        </div>
                         <CheckCircle className="h-8 w-8 text-emerald-500" />
                     </div>
                 </div>
@@ -264,11 +272,17 @@ export function Dashboard() {
                                 <tr key={trabalho.id} className="hover:bg-slate-50 transition cursor-pointer group" onClick={() => navigate(`/trabalhos/${trabalho.id}`)}>
                                     <td className="px-6 py-4"><span className="font-bold text-slate-900 block">{trabalho.pacienteNome}</span><span className="text-xs text-slate-400 font-mono">#{trabalho.id.substring(0, 8)}</span></td>
                                     <td className="px-6 py-4">{trabalho.servico?.nome || 'Personalizado'}</td>
-                                    <td className="px-6 py-4 flex items-center gap-2"><Calendar className="h-3 w-3 text-slate-400"/> {formatDate(trabalho.dataEntregaPrevista)}</td>
+
+                                    {/* CORREÇÃO DO ALINHAMENTO DA DATA */}
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center gap-2">
+                                            <Calendar className="h-3 w-3 text-slate-400"/> {formatDate(trabalho.dataEntregaPrevista)}
+                                        </div>
+                                    </td>
+
                                     <td className="px-6 py-4 font-bold">{formatCurrency(trabalho.valorFinal)}</td>
                                     <td className="px-6 py-4"><span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold ${statusInfo.color}`}><statusInfo.icon className="h-3 w-3" /> {statusInfo.label}</span></td>
                                     <td className="px-6 py-4 text-right flex items-center justify-end gap-3">
-                                        {/* BOTÃO DELETAR */}
                                         <button
                                             onClick={(e) => handleDelete(trabalho.id, e)}
                                             className="rounded-lg p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 transition"
@@ -276,7 +290,7 @@ export function Dashboard() {
                                         >
                                             <Trash2 className="h-4 w-4" />
                                         </button>
-                                        <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-slate-600" />
+                                        <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-slate-600 transition" />
                                     </td>
                                 </tr>
                             );
