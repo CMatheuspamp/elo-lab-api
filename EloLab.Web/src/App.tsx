@@ -8,7 +8,6 @@ import { Partners } from "./pages/Partners";
 import { Profile } from './pages/Profile';
 import { PrintJob } from "./pages/PrintJob";
 import { Layout } from './components/Layout';
-import { PartnerDashboard } from './pages/PartnerDashboard';// <--- Import Novo
 
 function App() {
     return (
@@ -16,22 +15,23 @@ function App() {
             <Routes>
                 {/* Rotas Públicas */}
                 <Route path="/" element={<Login />} />
-
-                {/* Rota de Impressão (Sem sidebar para sair limpa) */}
                 <Route path="/print/job/:id" element={<PrintJob />} />
 
                 {/* Rotas com Sidebar */}
                 <Route element={<Layout />}>
+                    {/* Dashboard Geral (Lab) */}
                     <Route path="/dashboard" element={<Dashboard />} />
+
+                    {/* Portal do Lab (Acesso da Clínica) */}
+                    <Route path="/portal/:labId" element={<Dashboard />} />
+
                     <Route path="/parceiros" element={<Partners />} />
-                    <Route path="/parceiros/:id/dashboard" element={<PartnerDashboard />} />
                     <Route path="/trabalhos/novo" element={<NewJob />} />
                     <Route path="/trabalhos/:id" element={<JobDetails />} />
                     <Route path="/servicos" element={<Services />} />
                     <Route path="/perfil" element={<Profile />} />
                 </Route>
 
-                {/* Fallback */}
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
         </BrowserRouter>

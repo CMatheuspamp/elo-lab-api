@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { supabase } from '../services/supabase';
-import { PageContainer } from '../components/PageContainer'; // <--- IMPORTANTE: Layout Padrão
+import { PageContainer } from '../components/PageContainer';
 import {
     ArrowLeft, Building2, CheckCircle, FileText, Loader2, Play,
     Package, Euro, Paperclip, UploadCloud, Trash2, Send, MessageSquare,
@@ -203,14 +203,17 @@ export function JobDetails() {
         } catch (error) { alert("Erro ao excluir."); }
     }
 
-    // === NAVEGAÇÃO INTELIGENTE (CORREÇÃO SOLICITADA) ===
+    // === NAVEGAÇÃO INTELIGENTE (CORREÇÃO AQUI) ===
     function handleBack() {
-        if (!souLaboratorio && trabalho?.laboratorioId) {
-            // Se sou Clínica, volto para o dashboard específico desse parceiro
-            navigate(`/parceiros/${trabalho.laboratorioId}/dashboard`);
-        } else {
+        if (souLaboratorio) {
             // Se sou Laboratório, volto para o meu dashboard geral
             navigate('/dashboard');
+        } else if (trabalho?.laboratorioId) {
+            // Se sou Clínica, volto para o portal específico do laboratório deste trabalho
+            navigate(`/portal/${trabalho.laboratorioId}`);
+        } else {
+            // Fallback caso não tenha ID do laboratório
+            navigate('/parceiros');
         }
     }
 

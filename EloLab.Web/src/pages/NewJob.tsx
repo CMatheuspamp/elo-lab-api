@@ -1,14 +1,15 @@
 import { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { PageContainer } from '../components/PageContainer';
 import {
     ArrowLeft, Save, Loader2, Calendar, User, FileText,
     Building2, Palette, ChevronDown, Euro, UploadCloud,
-    FileBox, Image as ImageIcon, Trash2, File, Smile, Calculator
+    FileBox, Image as ImageIcon, Trash2, File as FileIcon, Smile, Calculator
 } from 'lucide-react';
 import type { UserSession, Servico } from '../types';
 
-// === DADOS ESTRUTURADOS PARA O ODONTOGRAMA ===
+// ... (constantes de dentes e cores mantidas) ...
 const TEETH_Q1 = ['18', '17', '16', '15', '14', '13', '12', '11'];
 const TEETH_Q2 = ['21', '22', '23', '24', '25', '26', '27', '28'];
 const TEETH_Q3 = ['31', '32', '33', '34', '35', '36', '37', '38'];
@@ -28,25 +29,27 @@ const VITA_SHADES = [
 export function NewJob() {
     const navigate = useNavigate();
     const location = useLocation();
+
+    const preSelectedLabId = location.state?.preSelectedLabId;
+    const preSelectedLabColor = location.state?.preSelectedLabColor;
+
     const [loading, setLoading] = useState(false);
     const [user, setUser] = useState<UserSession | null>(null);
 
-    // Cor Dinâmica (Inicia com Azul padrão)
-    const [dynamicPrimaryColor, setDynamicPrimaryColor] = useState('#2563EB');
+    const [dynamicPrimaryColor, setDynamicPrimaryColor] = useState(
+        preSelectedLabColor || localStorage.getItem('elolab_user_color') || '#2563EB'
+    );
 
     const [listaServicos, setListaServicos] = useState<Servico[]>([]);
     const [listaParceiros, setListaParceiros] = useState<any[]>([]);
 
-    // Estados do Formulário
-    const [parceiroSelecionadoId, setParceiroSelecionadoId] = useState('');
+    const [parceiroSelecionadoId, setParceiroSelecionadoId] = useState(preSelectedLabId || '');
     const [paciente, setPaciente] = useState('');
     const [servicoId, setServicoId] = useState('');
 
-    // Dentes
     const [dentesSelecionados, setDentesSelecionados] = useState<string[]>([]);
     const [dentesString, setDentesString] = useState('');
 
-    // Preços
     const [valorUnitario, setValorUnitario] = useState<string>('');
     const [valorTotal, setValorTotal] = useState<string>('');
 
@@ -55,45 +58,45 @@ export function NewJob() {
     const [obs, setObs] = useState('');
     const [arquivos, setArquivos] = useState<File[]>([]);
 
-    // === VARIÁVEIS AUXILIARES ===
-    const isLab = user?.tipo === 'Laboratorio'; // <--- AQUI ESTAVA A FALTA
-    const isPreSelected = !!location.state?.labId;
-
-    // === GRADIENTE REFORÇADO ===
-    const backgroundStyle = {
-        background: `linear-gradient(180deg, ${dynamicPrimaryColor}40 0%, #f8fafc 100%)`,
-        backgroundColor: '#f8fafc'
-    };
+    const isLab = user?.tipo === 'Laboratorio';
+    const isPreSelectedMode = !!preSelectedLabId && !isLab;
 
     useEffect(() => {
         carregarDadosIniciais();
     }, []);
 
-    // Lógica de Cor "Camaleão"
     useEffect(() => {
         if (isLab) {
             setDynamicPrimaryColor(localStorage.getItem('elolab_user_color') || '#2563EB');
-        } else if (parceiroSelecionadoId) {
+        } else if (parceiroSelecionadoId && listaParceiros.length > 0) {
             const parceiro = listaParceiros.find(p => p.id === parceiroSelecionadoId);
-            setDynamicPrimaryColor(parceiro?.corPrimaria || '#2563EB');
-        } else {
-            setDynamicPrimaryColor('#64748b'); // Cinzento Neutro se ninguém selecionado
+            if (parceiro?.corPrimaria) {
+                setDynamicPrimaryColor(parceiro.corPrimaria);
+            }
         }
     }, [isLab, parceiroSelecionadoId, listaParceiros]);
 
-    // Carregar serviços quando seleciona parceiro (se for clínica)
+    // === CARREGAR SERVIÇOS QUANDO O PARCEIRO MUDA ===
     useEffect(() => {
         if (!user) return;
+
+        // Se NÃO sou Lab (sou Clínica) e tenho um parceiro selecionado
         if (!isLab && parceiroSelecionadoId) {
             setListaServicos([]);
-            setServicoId('');
-            setValorUnitario('');
-            setValorTotal('');
+
+            // CORREÇÃO: Chama o endpoint específico que lista serviços daquele Lab
             api.get(`/Servicos/laboratorio/${parceiroSelecionadoId}`)
-                .then(res => setListaServicos(res.data))
-                .catch(() => {});
+                .then(res => {
+                    setListaServicos(res.data);
+                })
+                .catch(err => console.error("Erro ao carregar serviços do lab:", err));
         }
     }, [parceiroSelecionadoId, user, isLab]);
+
+    // ... (restante das lógicas de dentes, cálculo e submit mantidas iguais) ...
+    // (Vou omitir para poupar espaço, mas manténs o código que já tinhas para dentes, cor, submit, etc.)
+
+    // ... [CÓDIGO DE DENTES, CÁLCULO E SUBMIT IGUAL AO ANTERIOR] ...
 
     // Lógica de Strings dos Dentes
     useEffect(() => {
@@ -122,7 +125,7 @@ export function NewJob() {
     // Cálculo do Total
     useEffect(() => {
         calcularValorTotal();
-    }, [dentesString, valorUnitario]);
+    }, [dentesString, valorUnitario, dentesSelecionados]);
 
     function calcularValorTotal() {
         if (!valorUnitario) {
@@ -153,7 +156,7 @@ export function NewJob() {
         try {
             const resUser = await api.get('/Auth/me');
             setUser(resUser.data);
-            const isUsuarioLab = resUser.data.tipo === 'Laboratorio'; // Variável local para uso imediato
+            const isUsuarioLab = resUser.data.tipo === 'Laboratorio';
 
             if (isUsuarioLab) {
                 api.get('/Servicos').then(res => setListaServicos(res.data));
@@ -162,10 +165,6 @@ export function NewJob() {
             } else {
                 const res = await api.get('/Laboratorios');
                 setListaParceiros(res.data);
-                // Se vier pré-selecionado do Dashboard do Parceiro
-                if (location.state?.labId) {
-                    setParceiroSelecionadoId(location.state.labId);
-                }
             }
         } catch (error) {
             navigate('/dashboard');
@@ -184,13 +183,11 @@ export function NewJob() {
         }
     }
 
-    // Função de Voltar Inteligente
     const handleBack = () => {
         if (isLab) {
             navigate('/dashboard');
-        } else if (isPreSelected && parceiroSelecionadoId) {
-            // Se veio do dashboard do parceiro, volta para lá
-            navigate(`/parceiros/${parceiroSelecionadoId}/dashboard`);
+        } else if (preSelectedLabId) {
+            navigate(`/portal/${preSelectedLabId}`);
         } else {
             navigate('/parceiros');
         }
@@ -206,7 +203,7 @@ export function NewJob() {
         const ext = fileName.split('.').pop()?.toLowerCase();
         if (['jpg', 'jpeg', 'png'].includes(ext || '')) return <ImageIcon className="h-5 w-5" style={{ color: dynamicPrimaryColor }} />;
         if (['stl', 'obj', 'ply'].includes(ext || '')) return <FileBox className="h-5 w-5" style={{ color: dynamicPrimaryColor }} />;
-        return <File className="h-5 w-5 text-slate-400" />;
+        return <FileIcon className="h-5 w-5 text-slate-400" />;
     }
     const toggleDente = (dente: string) => {
         setDentesSelecionados(prev =>
@@ -255,9 +252,8 @@ export function NewJob() {
             }
             alert('✅ Pedido criado com sucesso!');
 
-            // Redirecionamento Inteligente após sucesso
-            if (!isLab && isPreSelected) {
-                navigate(`/parceiros/${parceiroSelecionadoId}/dashboard`);
+            if (!isLab && preSelectedLabId) {
+                navigate(`/portal/${preSelectedLabId}`);
             } else if (!isLab) {
                 navigate('/parceiros');
             } else {
@@ -290,7 +286,8 @@ export function NewJob() {
     };
 
     return (
-        <div className="min-h-screen p-8 transition-all duration-500" style={backgroundStyle}>
+        <PageContainer primaryColor={dynamicPrimaryColor}>
+
             <div className="mx-auto max-w-4xl">
                 <div className="mb-6">
                     <button onClick={handleBack} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-800 transition">
@@ -301,7 +298,11 @@ export function NewJob() {
                 <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
                     <div className="mb-8 border-b border-slate-100 pb-6">
                         <h1 className="text-3xl font-bold text-slate-900">Novo Pedido</h1>
-                        <p className="text-slate-500 mt-1">Preencha os dados abaixo para iniciar um novo trabalho.</p>
+                        <p className="text-slate-500 mt-1">
+                            {isPreSelectedMode
+                                ? 'A criar pedido para o laboratório parceiro.'
+                                : 'Preencha os dados abaixo para iniciar um novo trabalho.'}
+                        </p>
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-8">
@@ -330,18 +331,16 @@ export function NewJob() {
                                         required
                                         value={parceiroSelecionadoId}
                                         onChange={e => setParceiroSelecionadoId(e.target.value)}
-                                        // Bloqueia se for Clínica e já vier pré-selecionado
-                                        disabled={!isLab && isPreSelected}
+                                        disabled={isPreSelectedMode}
                                         className={`w-full appearance-none rounded-xl border py-3 pl-10 pr-8 text-sm font-bold outline-none transition
-                                            ${!isLab && isPreSelected ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
+                                            ${isPreSelectedMode ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
                                         style={{ borderColor: `${dynamicPrimaryColor}40`, backgroundColor: `${dynamicPrimaryColor}08`, color: dynamicPrimaryColor }}
                                     >
                                         <option value="">{isLab ? "Selecione a Clínica..." : "Selecione o Laboratório..."}</option>
                                         {listaParceiros.map((p: any) => <option key={p.id} value={p.id}>{p.nome}</option>)}
                                     </select>
 
-                                    {/* Esconde a seta se estiver bloqueado para dar feedback visual */}
-                                    {!(!isLab && isPreSelected) && (
+                                    {!isPreSelectedMode && (
                                         <ChevronDown className="pointer-events-none absolute right-4 top-3.5 h-4 w-4" style={{ color: dynamicPrimaryColor }} />
                                     )}
                                 </div>
@@ -540,6 +539,6 @@ export function NewJob() {
                     </form>
                 </div>
             </div>
-        </div>
+        </PageContainer>
     );
 }

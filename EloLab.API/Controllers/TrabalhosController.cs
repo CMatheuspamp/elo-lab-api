@@ -196,4 +196,64 @@ public class TrabalhosController : ControllerBase
 
         return Ok(anexos);
     }
+    
+    // =============================================================
+    // 6. DELETAR TRABALHO (VERSÃO ROBUSTA)
+    // =============================================================
+    [HttpDelete("{id}")]
+    public async Task<IActionResult> DeleteTrabalho(Guid id)
+    {
+        // 1. Carrega o trabalho
+        var trabalho = await _context.Trabalhos.FindAsync(id);
+        if (trabalho == null) return NotFound();
+
+        try 
+        {
+            // 2. Carrega e Apaga Mensagens (Chat)
+            // O ToListAsync() garante que trazemos tudo para a memória antes de marcar para exclusão
+            var mensagens = await _context.Mensagens
+                .Where(m => m.TrabalhoId == id)
+                .ToListAsync();
+            
+            if (mensagens.Any())
+                _context.Mensagens.RemoveRange(mensagens);
+
+            // 3. Carrega e Apaga Anexos
+            var anexos = await _context.Anexos
+                .Where(a => a.TrabalhoId == id)
+                .ToListAsync();
+
+            if (anexos.Any())
+            {
+                // Opcional: Aqui poderia apagar o ficheiro físico do disco também
+                /*
+                foreach (var anexo in anexos)
+                {
+                    var path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", anexo.Url.TrimStart('/'));
+                    if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
+                }
+                */
+                _context.Anexos.RemoveRange(anexos);
+            }
+
+            // 4. Apaga o Trabalho
+            _context.Trabalhos.Remove(trabalho);
+            
+            // 5. Commit da Transação
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+        catch (DbUpdateException dbEx)
+        {
+            // Captura erro específico de banco de dados (Foreign Key, etc)
+            var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
+            return StatusCode(500, new { erro = "Erro de banco de dados ao excluir", detalhe = innerMessage });
+        }
+        catch (Exception ex)
+        {
+            // Erro genérico
+            return StatusCode(500, new { erro = "Erro interno ao excluir", detalhe = ex.Message });
+        }
+    }
 }
