@@ -35,6 +35,9 @@ public class Servico
 
     [Column("ativo")]
     public bool Ativo { get; set; } = true;
+    
+    [Column("foto_url")]
+    public string? FotoUrl { get; set; }
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -36,6 +36,7 @@ export interface Servico {
     prazoDiasUteis: number;
     descricao?: string;
     ativo: boolean;
+    fotoUrl?: string;
 }
 
 export interface Trabalho {

@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { api } from '../services/api';
-import { PageContainer } from '../components/PageContainer'; // <--- IMPORTADO
+import { PageContainer } from '../components/PageContainer';
 import {
-    Plus, Trash2, Clock, Loader2, Save, X, Edit, Search
-} from 'lucide-react';
+    Plus, Trash2, Clock, Loader2, Save, X, Edit, Search, Image as ImageIcon
+} from 'lucide-react'; // <--- REMOVIDO UploadCloud
 import type { Servico } from '../types';
 
 const MATERIAIS = ["Zircónia", "E-max", "Metal", "Acrílico", "Cerâmica", "Outros"];
@@ -12,16 +12,30 @@ export function Services() {
     // === WHITE LABEL ===
     const primaryColor = localStorage.getItem('elolab_user_color') || '#2563EB';
 
+    // Helper de URL para Imagens
+    const getFullUrl = (url: string) => {
+        if (!url) return '';
+        if (url.startsWith('http')) return url;
+        const baseUrl = api.defaults.baseURL?.replace(/\/api\/?$/, '') || 'http://localhost:5036';
+        const cleanPath = url.startsWith('/') ? url : `/${url}`;
+        return `${baseUrl}${cleanPath}`;
+    };
+
     const [servicos, setServicos] = useState<Servico[]>([]);
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
     const [filtroMaterial, setFiltroMaterial] = useState('Todos');
     const [busca, setBusca] = useState('');
+
+    // Estados do Formulário
     const [idEdicao, setIdEdicao] = useState<string | null>(null);
     const [nome, setNome] = useState('');
     const [material, setMaterial] = useState('Zircónia');
     const [preco, setPreco] = useState('');
     const [prazo, setPrazo] = useState('');
+    const [fotoUrl, setFotoUrl] = useState(''); // Novo estado para a foto
+
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         loadServicos();
@@ -38,12 +52,38 @@ export function Services() {
         }
     }
 
+    // Função de Upload de Imagem
+    async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
+        if (!e.target.files || e.target.files.length === 0) return;
+        const file = e.target.files[0];
+
+        // Validação simples de tamanho (ex: 2MB)
+        if (file.size > 2 * 1024 * 1024) {
+            alert("A imagem deve ter no máximo 2MB.");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('arquivo', file);
+
+        try {
+            // Usando o endpoint de logo como exemplo genérico de upload de imagem pública
+            const res = await api.post('/Laboratorios/logo', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            });
+            setFotoUrl(res.data.url);
+        } catch (error) {
+            alert("Erro ao enviar imagem.");
+        }
+    }
+
     function handleEditClick(s: Servico) {
         setIdEdicao(s.id);
         setNome(s.nome);
         setMaterial(s.material || 'Outros');
         setPreco(s.precoBase.toString());
         setPrazo(s.prazoDiasUteis ? s.prazoDiasUteis.toString() : '5');
+        setFotoUrl(s.fotoUrl || ''); // Carrega a foto existente
     }
 
     function handleCancelEdit() {
@@ -52,6 +92,7 @@ export function Services() {
         setMaterial('Zircónia');
         setPreco('');
         setPrazo('');
+        setFotoUrl('');
     }
 
     async function handleSave(e: React.FormEvent) {
@@ -62,7 +103,8 @@ export function Services() {
             material,
             precoBase: parseFloat(preco),
             prazoDiasUteis: parseInt(prazo),
-            descricao: ""
+            descricao: "",
+            fotoUrl: fotoUrl // Envia a URL da foto para o backend
         };
         try {
             if (idEdicao) {
@@ -98,11 +140,10 @@ export function Services() {
     if (loading) return <div className="p-8 text-slate-400">Carregando serviços...</div>;
 
     return (
-        // === PAGE CONTAINER ADICIONADO ===
         <PageContainer primaryColor={primaryColor}>
             <div className="mb-8">
                 <h1 className="text-3xl font-bold text-slate-900">Serviços & Preços</h1>
-                <p className="text-slate-500">Gerencie o seu catálogo de serviços.</p>
+                <p className="text-slate-500">Gerencie o seu catálogo e adicione fotos para atrair clientes.</p>
             </div>
 
             <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
@@ -122,10 +163,37 @@ export function Services() {
                             )}
                         </div>
                         <form onSubmit={handleSave} className="space-y-5">
+
+                            {/* Área de Upload de Foto */}
+                            <div>
+                                <label className="mb-1.5 block text-xs font-bold text-slate-400 uppercase">Foto do Serviço</label>
+                                <div
+                                    className="relative flex h-40 w-full cursor-pointer flex-col items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-slate-200 bg-slate-50 hover:bg-slate-100 hover:border-blue-300 transition"
+                                    onClick={() => fileInputRef.current?.click()}
+                                >
+                                    {fotoUrl ? (
+                                        <img src={getFullUrl(fotoUrl)} className="h-full w-full object-cover" alt="Preview" />
+                                    ) : (
+                                        <div className="flex flex-col items-center text-slate-400">
+                                            <ImageIcon className="mb-2 h-8 w-8 opacity-50" />
+                                            <span className="text-xs font-bold">Clique para enviar</span>
+                                        </div>
+                                    )}
+                                    <input
+                                        type="file"
+                                        ref={fileInputRef}
+                                        onChange={handleImageUpload}
+                                        className="hidden"
+                                        accept="image/png, image/jpeg, image/webp"
+                                    />
+                                </div>
+                            </div>
+
                             <div>
                                 <label className="mb-1.5 block text-xs font-bold text-slate-400 uppercase">Nome</label>
                                 <input required type="text" value={nome} onChange={e => setNome(e.target.value)}
-                                       className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-medium outline-none transition"
+                                       className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-medium outline-none transition focus:ring-2 focus:ring-opacity-50"
+                                    // REMOVIDO O STYLE INVÁLIDO AQUI
                                        onFocus={(e) => e.target.style.borderColor = primaryColor}
                                        onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
                                        placeholder="Ex: Coroa Total" />
@@ -213,11 +281,18 @@ export function Services() {
                                 {servicosFiltrados.map((s) => (
                                     <div key={s.id} className="group flex items-center justify-between p-5 hover:bg-slate-50 transition">
                                         <div className="flex items-center gap-5">
-                                            <div className="hidden sm:flex h-12 w-12 items-center justify-center rounded-xl font-bold text-sm"
-                                                 style={{ backgroundColor: `${primaryColor}10`, color: primaryColor }}
-                                            >
-                                                {s.material ? s.material.substring(0, 2).toUpperCase() : 'GE'}
+                                            {/* Miniatura da Imagem na Lista */}
+                                            <div className="h-12 w-12 rounded-lg bg-slate-100 overflow-hidden border border-slate-200 flex-shrink-0">
+                                                {s.fotoUrl ? (
+                                                    <img src={getFullUrl(s.fotoUrl)} className="h-full w-full object-cover" alt={s.nome} />
+                                                ) : (
+                                                    <div className="h-full w-full flex items-center justify-center font-bold text-xs text-slate-400"
+                                                         style={{ backgroundColor: `${primaryColor}10`, color: primaryColor }}>
+                                                        {s.material ? s.material.substring(0, 2).toUpperCase() : 'GE'}
+                                                    </div>
+                                                )}
                                             </div>
+
                                             <div>
                                                 <p className="font-bold text-slate-900 text-base">{s.nome}</p>
                                                 <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">

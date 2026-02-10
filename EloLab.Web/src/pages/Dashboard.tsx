@@ -3,9 +3,9 @@ import { api } from '../services/api';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     TrendingUp, AlertCircle, Clock, CheckCircle,
-    Filter, Search, Plus, Calendar, ArrowRight, Trash2, ArrowLeft, Wallet // <--- Importei Wallet
+    Filter, Search, Plus, Calendar, ArrowRight, Trash2, ArrowLeft, Wallet, BookOpen, X, Info
 } from 'lucide-react';
-import type { UserSession, Trabalho } from '../types';
+import type { UserSession, Trabalho, Servico } from '../types';
 import { PageContainer } from '../components/PageContainer';
 
 export function Dashboard() {
@@ -16,6 +16,12 @@ export function Dashboard() {
     const [trabalhos, setTrabalhos] = useState<Trabalho[]>([]);
     const [labInfo, setLabInfo] = useState<any>(null);
     const [loading, setLoading] = useState(true);
+
+    // === ESTADOS DO CATÁLOGO ===
+    const [showCatalogue, setShowCatalogue] = useState(false);
+    const [catalogoServicos, setCatalogoServicos] = useState<Servico[]>([]);
+    const [servicoDetalhe, setServicoDetalhe] = useState<Servico | null>(null);
+    // ===========================
 
     // Filtros
     const [clinicaSelecionadaId, setClinicaSelecionadaId] = useState('Todos');
@@ -67,6 +73,10 @@ export function Dashboard() {
                     const currentLab = labsRes.data.find((l: any) => l.id === labId);
                     if (currentLab) setLabInfo(currentLab);
 
+                    // CARREGA SERVIÇOS PARA O CATÁLOGO (PRELOAD)
+                    const servicosRes = await api.get(`/Servicos/laboratorio/${labId}`);
+                    setCatalogoServicos(servicosRes.data);
+
                 } else {
                     const clinicasRes = await api.get('/Clinicas');
                     setClinicasParaFiltro(clinicasRes.data);
@@ -86,13 +96,10 @@ export function Dashboard() {
     async function handleDelete(id: string, e: React.MouseEvent) {
         e.stopPropagation();
         if (!confirm('Tem a certeza que deseja excluir este trabalho?')) return;
-
         try {
             await api.delete(`/Trabalhos/${id}`);
             setTrabalhos(prev => prev.filter(t => t.id !== id));
-        } catch (error) {
-            alert('Erro ao excluir trabalho.');
-        }
+        } catch (error) { alert('Erro ao excluir trabalho.'); }
     }
 
     function limparFiltros() {
@@ -105,30 +112,23 @@ export function Dashboard() {
     if (loading || !user) return <div className="min-h-screen flex items-center justify-center"><div className="animate-spin h-8 w-8 border-4 border-slate-300 border-t-slate-800 rounded-full"></div></div>;
 
     const isClinica = user.tipo === 'Clinica';
-
-    // === CUSTOMIZAÇÃO VISUAL ===
     const primaryColor = labInfo ? (labInfo.corPrimaria || '#2563EB') : (localStorage.getItem('elolab_user_color') || '#2563EB');
     const logoUrl = labInfo ? labInfo.logoUrl : localStorage.getItem('elolab_user_logo');
     const displayName = labInfo ? labInfo.nome : user.meusDados.nome;
-
     const displaySubtitle = isClinica ? 'Portal do Parceiro' : 'Ambiente de Gestão & Produção';
     const labelFinanceiro = isClinica ? 'Total Investido' : 'Faturamento';
-    const labelNovos = isClinica ? 'Pendentes' : 'Novos Pedidos'; // <--- Alterado para "Pendentes"
-
-    // Ícone Dinâmico (Carteira para Clinica, Gráfico para Lab)
+    const labelNovos = isClinica ? 'Pendentes' : 'Novos Pedidos';
     const IconFinanceiro = isClinica ? Wallet : TrendingUp;
 
     const trabalhosFiltrados = trabalhos.filter(t => {
         const textoMatch = t.pacienteNome.toLowerCase().includes(busca.toLowerCase()) || t.id.toLowerCase().includes(busca.toLowerCase()) || (t.servico?.nome || '').toLowerCase().includes(busca.toLowerCase());
         const statusMatch = filtroStatus === 'Todos' || t.status === filtroStatus;
         const clinicaMatch = clinicaSelecionadaId === 'Todos' || t.clinicaId === clinicaSelecionadaId;
-
         let dataMatch = true;
         if (filtroMes) {
             const dataRef = t.dataEntregaPrevista || t.createdAt;
             dataMatch = new Date(dataRef).toISOString().slice(0, 7) === filtroMes;
         }
-
         return textoMatch && statusMatch && clinicaMatch && dataMatch;
     });
 
@@ -139,6 +139,118 @@ export function Dashboard() {
 
     return (
         <PageContainer primaryColor={primaryColor}>
+
+            {/* === CATÁLOGO MODAL === */}
+            {showCatalogue && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="relative w-full max-w-5xl h-[85vh] bg-slate-50 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+
+                        {/* Header do Catálogo */}
+                        <div className="flex items-center justify-between p-6 bg-white border-b border-slate-100">
+                            <div>
+                                <h2 className="text-2xl font-bold text-slate-900">Catálogo de Serviços</h2>
+                                <p className="text-slate-500 text-sm">Explore os serviços e materiais disponíveis.</p>
+                            </div>
+                            <button onClick={() => { setShowCatalogue(false); setServicoDetalhe(null); }} className="rounded-full p-2 hover:bg-slate-100 transition">
+                                <X className="h-6 w-6 text-slate-400" />
+                            </button>
+                        </div>
+
+                        {/* Conteúdo (Scrollable) */}
+                        <div className="flex-1 overflow-y-auto p-6 lg:p-8">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {catalogoServicos.map(s => (
+                                    <div
+                                        key={s.id}
+                                        onClick={() => setServicoDetalhe(s)}
+                                        className="group cursor-pointer bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden flex flex-col"
+                                    >
+                                        {/* Imagem do Card */}
+                                        <div className="h-48 w-full bg-slate-100 overflow-hidden relative">
+                                            {s.fotoUrl ? (
+                                                <img src={getFullUrl(s.fotoUrl)} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" alt={s.nome} />
+                                            ) : (
+                                                <div className="h-full w-full flex flex-col items-center justify-center text-slate-300 bg-slate-50">
+                                                    <Info className="h-10 w-10 mb-2 opacity-50" />
+                                                    <span className="text-xs font-bold uppercase tracking-wider">Sem Imagem</span>
+                                                </div>
+                                            )}
+                                            <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-slate-700 shadow-sm">
+                                                {s.material || 'Geral'}
+                                            </div>
+                                        </div>
+
+                                        {/* Informações */}
+                                        <div className="p-5 flex flex-col flex-1">
+                                            <h3 className="font-bold text-lg text-slate-900 mb-1 group-hover:text-blue-600 transition">{s.nome}</h3>
+                                            <div className="flex items-center gap-2 text-xs text-slate-500 mb-4">
+                                                <Clock className="h-3 w-3" /> {s.prazoDiasUteis} dias úteis
+                                            </div>
+                                            <div className="mt-auto flex items-center justify-between border-t border-slate-50 pt-4">
+                                                <span className="text-xl font-black text-slate-900">{formatCurrency(s.precoBase)}</span>
+                                                <span className="text-xs font-bold text-blue-600 uppercase tracking-wide opacity-0 group-hover:opacity-100 transition">Ver Detalhes</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* === MODAL DE DETALHE (OVERLAY) === */}
+                    {servicoDetalhe && (
+                        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in zoom-in duration-200">
+                            <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col md:flex-row max-h-[80vh]">
+                                {/* Imagem Grande */}
+                                <div className="w-full md:w-1/2 h-64 md:h-auto bg-slate-100 relative">
+                                    {servicoDetalhe.fotoUrl ? (
+                                        <img src={getFullUrl(servicoDetalhe.fotoUrl)} className="h-full w-full object-cover" />
+                                    ) : (
+                                        <div className="h-full w-full flex items-center justify-center text-slate-300"><Info className="h-12 w-12"/></div>
+                                    )}
+                                </div>
+                                {/* Infos */}
+                                <div className="p-8 md:w-1/2 flex flex-col">
+                                    <button onClick={(e) => { e.stopPropagation(); setServicoDetalhe(null); }} className="self-end mb-4 text-slate-400 hover:text-slate-600"><X className="h-6 w-6"/></button>
+
+                                    <span className="text-xs font-bold uppercase tracking-wider text-blue-600 mb-2">{servicoDetalhe.material}</span>
+                                    <h2 className="text-3xl font-bold text-slate-900 mb-4">{servicoDetalhe.nome}</h2>
+
+                                    <div className="space-y-4 mb-8">
+                                        <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                                            <span className="text-sm text-slate-500">Prazo de Entrega</span>
+                                            <span className="font-bold text-slate-900 flex items-center gap-2"><Clock className="h-4 w-4 text-slate-400"/> {servicoDetalhe.prazoDiasUteis} dias</span>
+                                        </div>
+                                        <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                                            <span className="text-sm text-slate-500">Valor Estimado</span>
+                                            <span className="text-2xl font-black text-slate-900">{formatCurrency(servicoDetalhe.precoBase)}</span>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        onClick={() => {
+                                            setServicoDetalhe(null);
+                                            setShowCatalogue(false);
+                                            // AQUI ESTÁ A MUDANÇA: Adicionei preSelectedServiceId
+                                            navigate('/trabalhos/novo', {
+                                                state: {
+                                                    preSelectedLabId: labId,
+                                                    preSelectedLabColor: primaryColor,
+                                                    preSelectedServiceId: servicoDetalhe.id
+                                                }
+                                            });
+                                        }}
+                                        className="mt-auto w-full py-4 rounded-xl font-bold text-white shadow-lg hover:opacity-90 transition text-center"
+                                        style={{ backgroundColor: primaryColor }}
+                                    >
+                                        Solicitar este Serviço
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {isClinica && labId && (
                 <button onClick={() => navigate('/parceiros')} className="mb-4 flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-800 transition">
@@ -173,22 +285,34 @@ export function Dashboard() {
                             </div>
                         </div>
 
-                        <button
-                            onClick={() => navigate('/trabalhos/novo', { state: { preSelectedLabId: labId, preSelectedLabColor: primaryColor } })}
-                            className="group flex items-center gap-3 rounded-2xl px-8 py-4 text-base font-bold text-white shadow-xl transition-all hover:-translate-y-1 hover:shadow-2xl"
-                            style={{ backgroundColor: primaryColor, boxShadow: `0 10px 30px -10px ${primaryColor}60` }}
-                        >
-                            <div className="rounded-full bg-white/20 p-1 group-hover:bg-white/30 transition">
-                                <Plus className="h-6 w-6" />
-                            </div>
-                            Novo Pedido
-                        </button>
+                        <div className="flex gap-3">
+                            {/* === NOVO BOTÃO: CATÁLOGO (Apenas para Clínica) === */}
+                            {isClinica && (
+                                <button
+                                    onClick={() => setShowCatalogue(true)}
+                                    className="flex items-center gap-2 rounded-2xl px-6 py-4 text-base font-bold text-slate-700 bg-white border border-slate-200 shadow-sm transition hover:bg-slate-50 hover:border-slate-300"
+                                >
+                                    <BookOpen className="h-5 w-5 text-slate-400" />
+                                    Ver Catálogo
+                                </button>
+                            )}
+
+                            <button
+                                onClick={() => navigate('/trabalhos/novo', { state: { preSelectedLabId: labId, preSelectedLabColor: primaryColor } })}
+                                className="group flex items-center gap-3 rounded-2xl px-8 py-4 text-base font-bold text-white shadow-xl transition-all hover:-translate-y-1 hover:shadow-2xl"
+                                style={{ backgroundColor: primaryColor, boxShadow: `0 10px 30px -10px ${primaryColor}60` }}
+                            >
+                                <div className="rounded-full bg-white/20 p-1 group-hover:bg-white/30 transition">
+                                    <Plus className="h-6 w-6" />
+                                </div>
+                                Novo Pedido
+                            </button>
+                        </div>
                     </div>
                 </div>
 
                 {/* Cards */}
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                    {/* Card Financeiro (Ícone e Texto Dinâmicos) */}
                     <div className="relative overflow-hidden rounded-2xl bg-white p-6 shadow-sm border border-slate-100 group hover:border-slate-200 transition">
                         <div className="flex items-center justify-between">
                             <div>
@@ -208,25 +332,20 @@ export function Dashboard() {
                         <AlertCircle className="h-8 w-8 text-orange-500" />
                     </div>
 
+                    {/* ... Restantes Cards iguais ... */}
                     <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between">
-                        <div>
-                            <p className="text-xs font-bold uppercase text-slate-400">Em Produção</p>
-                            <h3 className="mt-2 text-2xl font-black text-slate-900">{emProducao}</h3>
-                        </div>
+                        <div><p className="text-xs font-bold uppercase text-slate-400">Em Produção</p><h3 className="mt-2 text-2xl font-black text-slate-900">{emProducao}</h3></div>
                         <Clock className="h-8 w-8 text-blue-600" />
                     </div>
-
                     <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between">
-                        <div>
-                            <p className="text-xs font-bold uppercase text-slate-400">Concluídos</p>
-                            <h3 className="mt-2 text-2xl font-black text-slate-900">{concluidos}</h3>
-                        </div>
+                        <div><p className="text-xs font-bold uppercase text-slate-400">Concluídos</p><h3 className="mt-2 text-2xl font-black text-slate-900">{concluidos}</h3></div>
                         <CheckCircle className="h-8 w-8 text-emerald-500" />
                     </div>
                 </div>
 
-                {/* Filtros */}
+                {/* Filtros e Tabela (Mantidos) */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                    {/* ... Conteúdo dos filtros igual ... */}
                     <div className="mb-6 flex items-center justify-between">
                         <h3 className="flex items-center gap-2 text-sm font-bold text-slate-700">
                             <Filter className="h-4 w-4" /> Filtros Avançados
@@ -235,7 +354,6 @@ export function Dashboard() {
                             Limpar Filtros
                         </button>
                     </div>
-
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
                         <div className="lg:col-span-2 relative">
                             <Search className="absolute top-3 left-3 h-4 w-4 text-slate-400" />
@@ -247,19 +365,16 @@ export function Dashboard() {
                             <option value="EmProducao">Em Produção</option>
                             <option value="Concluido">Concluído</option>
                         </select>
-
                         {!isClinica ? (
                             <select value={clinicaSelecionadaId} onChange={e => setClinicaSelecionadaId(e.target.value)} className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none">
                                 <option value="Todos">Clínicas: Todas</option>
                                 {clinicasParaFiltro.map((p: any) => (<option key={p.id} value={p.id}>{p.nome}</option>))}
                             </select>
                         ) : (<div className="hidden lg:block"></div>)}
-
                         <input type="month" value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none" />
                     </div>
                 </div>
 
-                {/* Tabela */}
                 <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                     <table className="w-full text-left text-sm text-slate-600">
                         <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-400 tracking-wider">
@@ -272,24 +387,11 @@ export function Dashboard() {
                                 <tr key={trabalho.id} className="hover:bg-slate-50 transition cursor-pointer group" onClick={() => navigate(`/trabalhos/${trabalho.id}`)}>
                                     <td className="px-6 py-4"><span className="font-bold text-slate-900 block">{trabalho.pacienteNome}</span><span className="text-xs text-slate-400 font-mono">#{trabalho.id.substring(0, 8)}</span></td>
                                     <td className="px-6 py-4">{trabalho.servico?.nome || 'Personalizado'}</td>
-
-                                    {/* CORREÇÃO DO ALINHAMENTO DA DATA */}
-                                    <td className="px-6 py-4">
-                                        <div className="flex items-center gap-2">
-                                            <Calendar className="h-3 w-3 text-slate-400"/> {formatDate(trabalho.dataEntregaPrevista)}
-                                        </div>
-                                    </td>
-
+                                    <td className="px-6 py-4"><div className="flex items-center gap-2"><Calendar className="h-3 w-3 text-slate-400"/> {formatDate(trabalho.dataEntregaPrevista)}</div></td>
                                     <td className="px-6 py-4 font-bold">{formatCurrency(trabalho.valorFinal)}</td>
                                     <td className="px-6 py-4"><span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold ${statusInfo.color}`}><statusInfo.icon className="h-3 w-3" /> {statusInfo.label}</span></td>
                                     <td className="px-6 py-4 text-right flex items-center justify-end gap-3">
-                                        <button
-                                            onClick={(e) => handleDelete(trabalho.id, e)}
-                                            className="rounded-lg p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 transition"
-                                            title="Apagar Trabalho"
-                                        >
-                                            <Trash2 className="h-4 w-4" />
-                                        </button>
+                                        <button onClick={(e) => handleDelete(trabalho.id, e)} className="rounded-lg p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 transition" title="Apagar Trabalho"><Trash2 className="h-4 w-4" /></button>
                                         <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-slate-600 transition" />
                                     </td>
                                 </tr>

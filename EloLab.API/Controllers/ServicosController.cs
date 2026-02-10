@@ -29,8 +29,7 @@ public class ServicosController : ControllerBase
         
         if (string.IsNullOrEmpty(labIdClaim) || !Guid.TryParse(labIdClaim, out var labId))
         {
-            // Se não for Lab, retorna lista vazia ou erro. 
-            // O frontend trata isso.
+            // Se não for Lab, retorna lista vazia.
             return Ok(new List<Servico>());
         }
 
@@ -65,7 +64,9 @@ public class ServicosController : ControllerBase
             Descricao = request.Descricao,
             PrecoBase = request.PrecoBase,
             PrazoDiasUteis = request.PrazoDiasUteis,
-            Ativo = true
+            Ativo = true,
+            // === NOVO: Grava a URL da foto ===
+            FotoUrl = request.FotoUrl 
         };
 
         _context.Servicos.Add(servico);
@@ -87,10 +88,13 @@ public class ServicosController : ControllerBase
             return Forbid();
 
         servico.Nome = request.Nome;
-        servico.Material = request.Material; // Atualiza material
+        servico.Material = request.Material;
         servico.Descricao = request.Descricao;
         servico.PrecoBase = request.PrecoBase;
         servico.PrazoDiasUteis = request.PrazoDiasUteis;
+        
+        // === NOVO: Atualiza a URL da foto ===
+        servico.FotoUrl = request.FotoUrl; 
 
         await _context.SaveChangesAsync();
         return NoContent();

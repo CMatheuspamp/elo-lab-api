@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import type { UserSession, Servico } from '../types';
 
-// ... (constantes de dentes e cores mantidas) ...
+// === DADOS ESTRUTURADOS PARA O ODONTOGRAMA ===
 const TEETH_Q1 = ['18', '17', '16', '15', '14', '13', '12', '11'];
 const TEETH_Q2 = ['21', '22', '23', '24', '25', '26', '27', '28'];
 const TEETH_Q3 = ['31', '32', '33', '34', '35', '36', '37', '38'];
@@ -30,12 +30,15 @@ export function NewJob() {
     const navigate = useNavigate();
     const location = useLocation();
 
+    // Recupera dados passados pela navegação
     const preSelectedLabId = location.state?.preSelectedLabId;
     const preSelectedLabColor = location.state?.preSelectedLabColor;
+    const preSelectedServiceId = location.state?.preSelectedServiceId; // <--- NOVO: ID do Serviço vindo do Catálogo
 
     const [loading, setLoading] = useState(false);
     const [user, setUser] = useState<UserSession | null>(null);
 
+    // Cor Dinâmica
     const [dynamicPrimaryColor, setDynamicPrimaryColor] = useState(
         preSelectedLabColor || localStorage.getItem('elolab_user_color') || '#2563EB'
     );
@@ -43,13 +46,18 @@ export function NewJob() {
     const [listaServicos, setListaServicos] = useState<Servico[]>([]);
     const [listaParceiros, setListaParceiros] = useState<any[]>([]);
 
+    // Estados do Formulário
     const [parceiroSelecionadoId, setParceiroSelecionadoId] = useState(preSelectedLabId || '');
     const [paciente, setPaciente] = useState('');
-    const [servicoId, setServicoId] = useState('');
 
+    // Inicia com o serviço pré-selecionado (se houver)
+    const [servicoId, setServicoId] = useState(preSelectedServiceId || '');
+
+    // Dentes
     const [dentesSelecionados, setDentesSelecionados] = useState<string[]>([]);
     const [dentesString, setDentesString] = useState('');
 
+    // Preços
     const [valorUnitario, setValorUnitario] = useState<string>('');
     const [valorTotal, setValorTotal] = useState<string>('');
 
@@ -58,6 +66,7 @@ export function NewJob() {
     const [obs, setObs] = useState('');
     const [arquivos, setArquivos] = useState<File[]>([]);
 
+    // === VARIÁVEIS AUXILIARES ===
     const isLab = user?.tipo === 'Laboratorio';
     const isPreSelectedMode = !!preSelectedLabId && !isLab;
 
@@ -65,6 +74,7 @@ export function NewJob() {
         carregarDadosIniciais();
     }, []);
 
+    // Lógica de Cor "Camaleão"
     useEffect(() => {
         if (isLab) {
             setDynamicPrimaryColor(localStorage.getItem('elolab_user_color') || '#2563EB');
@@ -76,13 +86,15 @@ export function NewJob() {
         }
     }, [isLab, parceiroSelecionadoId, listaParceiros]);
 
-    // === CARREGAR SERVIÇOS QUANDO O PARCEIRO MUDA ===
+    // Carregar serviços quando seleciona parceiro
     useEffect(() => {
         if (!user) return;
 
         // Se NÃO sou Lab (sou Clínica) e tenho um parceiro selecionado
         if (!isLab && parceiroSelecionadoId) {
-            setListaServicos([]);
+            // Se NÃO veio pré-selecionado do catálogo, limpamos para garantir.
+            // Se veio, mantemos para a lógica de auto-preenchimento funcionar.
+            if (!preSelectedServiceId && !listaServicos.length) setListaServicos([]);
 
             // CORREÇÃO: Chama o endpoint específico que lista serviços daquele Lab
             api.get(`/Servicos/laboratorio/${parceiroSelecionadoId}`)
@@ -93,10 +105,17 @@ export function NewJob() {
         }
     }, [parceiroSelecionadoId, user, isLab]);
 
-    // ... (restante das lógicas de dentes, cálculo e submit mantidas iguais) ...
-    // (Vou omitir para poupar espaço, mas manténs o código que já tinhas para dentes, cor, submit, etc.)
-
-    // ... [CÓDIGO DE DENTES, CÁLCULO E SUBMIT IGUAL AO ANTERIOR] ...
+    // === NOVO: LÓGICA PARA PREENCHER PREÇO AUTOMATICAMENTE ===
+    // Se vier do catálogo, assim que a lista carregar, preenche o preço
+    useEffect(() => {
+        if (preSelectedServiceId && listaServicos.length > 0) {
+            const servicoEncontrado = listaServicos.find(s => s.id === preSelectedServiceId);
+            if (servicoEncontrado) {
+                setValorUnitario(servicoEncontrado.precoBase.toString());
+                setServicoId(preSelectedServiceId); // Garante a seleção no select
+            }
+        }
+    }, [listaServicos, preSelectedServiceId]);
 
     // Lógica de Strings dos Dentes
     useEffect(() => {
@@ -159,6 +178,7 @@ export function NewJob() {
             const isUsuarioLab = resUser.data.tipo === 'Laboratorio';
 
             if (isUsuarioLab) {
+                // Se for lab, carrega os seus próprios serviços
                 api.get('/Servicos').then(res => setListaServicos(res.data));
                 const res = await api.get('/Clinicas');
                 setListaParceiros(res.data);
