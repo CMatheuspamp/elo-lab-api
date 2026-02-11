@@ -32,36 +32,58 @@ public class ClinicasController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> CriarClinica([FromBody] CriarClinicaRequest request)
     {
-        var labExiste = await _context.Laboratorios.AnyAsync(l => l.Id == request.LaboratorioId);
-        if (!labExiste)
+        try 
         {
-            return BadRequest("O Laboratório informado não existe.");
+            // 1. Validar se o laboratório existe
+            var labExiste = await _context.Laboratorios.AnyAsync(l => l.Id == request.LaboratorioId);
+            if (!labExiste) return BadRequest("Laboratório não encontrado.");
+
+            // 2. Criar a Clínica
+            var novaClinica = new Clinica
+            {
+                Id = Guid.NewGuid(), // Geramos o ID aqui para garantir
+                Nome = request.Nome,
+                EmailContato = request.Email,
+                Telefone = request.Telefone,
+                Nif = request.Nif,
+                Endereco = request.Endereco,
+                CreatedAt = DateTime.UtcNow,
+                UsuarioId = null // Explicitamente nulo pois é manual
+            };
+
+            _context.Clinicas.Add(novaClinica);
+            await _context.SaveChangesAsync(); 
+
+            // 3. Criar o Vínculo (LaboratorioClinica)
+            var novoElo = new LaboratorioClinica
+            {
+                Id = Guid.NewGuid(),
+                LaboratorioId = request.LaboratorioId,
+                ClinicaId = novaClinica.Id,
+                Ativo = true,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            _context.LaboratorioClinicas.Add(novoElo);
+            await _context.SaveChangesAsync();
+
+            // 4. RETORNO BLINDADO (AQUI ESTAVA O ERRO)
+            // Em vez de retornar a entidade complexa, retornamos um objeto simples.
+            // Isso evita qualquer erro de serialização ou ciclo infinito.
+            return Ok(new { 
+                id = novaClinica.Id, 
+                nome = novaClinica.Nome,
+                mensagem = "Cadastrado com sucesso"
+            });
         }
-
-        var novaClinica = new Clinica
+        catch (Exception ex)
         {
-            Nome = request.Nome,
-            EmailContato = request.Email,
-            Telefone = request.Telefone,
-            Nif = request.Nif,
-            Endereco = request.Endereco,
-            CreatedAt = DateTime.UtcNow
-        };
-
-        _context.Clinicas.Add(novaClinica);
-        await _context.SaveChangesAsync(); 
-
-        var novoElo = new LaboratorioClinica
-        {
-            LaboratorioId = request.LaboratorioId,
-            ClinicaId = novaClinica.Id,
-            Ativo = true
-        };
-
-        _context.LaboratorioClinicas.Add(novoElo);
-        await _context.SaveChangesAsync();
-
-        return CreatedAtAction(nameof(GetClinicasDoLaboratorio), new { labId = request.LaboratorioId }, novaClinica);
+            // Se der erro, vai aparecer no seu terminal do backend para sabermos o que foi
+            Console.WriteLine($"ERRO CRÍTICO AO CRIAR CLÍNICA: {ex.Message}");
+            if (ex.InnerException != null) Console.WriteLine($"DETALHE: {ex.InnerException.Message}");
+            
+            return StatusCode(500, "Erro ao processar o cadastro.");
+        }
     }
 
     [HttpGet("por-laboratorio/{labId}")]
@@ -98,5 +120,56 @@ public class ClinicasController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok(clinica);
+    }
+    
+    // ... outros métodos ...
+
+    [HttpDelete("{clinicaId}")]
+    public async Task<IActionResult> RemoverClinica(Guid clinicaId)
+    {
+        var labId = User.FindFirst("laboratorioId")?.Value;
+        if (string.IsNullOrEmpty(labId)) return Unauthorized();
+        var labGuid = Guid.Parse(labId);
+
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            // 1. Tenta achar o vínculo (pode ser null se for lixo antigo)
+            var vinculo = await _context.LaboratorioClinicas
+                .FirstOrDefaultAsync(lc => lc.LaboratorioId == labGuid && lc.ClinicaId == clinicaId);
+
+            // 2. Tenta achar a clínica
+            var clinica = await _context.Clinicas.FindAsync(clinicaId);
+
+            // Se não existe nem um nem outro, aí sim é 404
+            if (vinculo == null && clinica == null) 
+            {
+                return NotFound("Registo não encontrado.");
+            }
+
+            // 3. Se o vínculo existe, removemos
+            if (vinculo != null)
+            {
+                _context.LaboratorioClinicas.Remove(vinculo);
+            }
+
+            // 4. Se a clínica é MANUAL (UsuarioId == null), removemos a clínica da base de dados
+            // Isso garante que limpamos as "órfãs" mesmo que não tenham vínculo
+            if (clinica != null && clinica.UsuarioId == null)
+            {
+                _context.Clinicas.Remove(clinica);
+            }
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return NoContent();
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            Console.WriteLine($"Erro ao remover: {ex.Message}");
+            return StatusCode(500, "Erro ao remover clínica.");
+        }
     }
 }
