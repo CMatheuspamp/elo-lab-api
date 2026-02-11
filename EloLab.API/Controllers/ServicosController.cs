@@ -107,13 +107,21 @@ public class ServicosController : ControllerBase
         var servico = await _context.Servicos.FindAsync(id);
         if (servico == null) return NotFound();
 
-        var labIdClaim = User.FindFirst("laboratorioId")?.Value;
-        if (labIdClaim == null || servico.LaboratorioId.ToString() != labIdClaim)
-            return Forbid();
-
-        _context.Servicos.Remove(servico);
-        await _context.SaveChangesAsync();
-
-        return NoContent();
+        try
+        {
+            _context.Servicos.Remove(servico);
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
+        catch (DbUpdateException)
+        {
+            // Quando o banco de dados bloquear a exclusão por causa do histórico, 
+            // enviamos esta mensagem limpa. O nosso React (via api.ts) vai mostrá-la no Toast!
+            return BadRequest(new { erro = "Este serviço não pode ser apagado porque já faz parte do histórico de um ou mais pedidos. Se já não o utiliza, recomendamos editar o nome (Ex: 'Inativo - Zircónia')." });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { erro = "Ocorreu um erro interno ao tentar excluir o serviço." });
+        }
     }
 }

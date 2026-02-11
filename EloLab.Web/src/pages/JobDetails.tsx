@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { supabase } from '../services/supabase';
 import { PageContainer } from '../components/PageContainer';
-import { notify } from '../utils/notify'; // <-- NOVO IMPORT
+import { notify } from '../utils/notify';
 import {
     ArrowLeft, Building2, CheckCircle, FileText, Loader2, Play,
     Package, Euro, Paperclip, UploadCloud, Trash2, Send, MessageSquare,
@@ -58,6 +58,9 @@ export function JobDetails() {
     const [updating, setUpdating] = useState(false);
     const [uploading, setUploading] = useState(false);
     const [sendingMsg, setSendingMsg] = useState(false);
+
+    // === NOVO ESTADO: MODAL DE CONFIRMAÇÃO ===
+    const [anexoParaExcluir, setAnexoParaExcluir] = useState<string | null>(null);
 
     const [novoTexto, setNovoTexto] = useState('');
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -138,7 +141,7 @@ export function JobDetails() {
         try {
             await api.patch(`/Trabalhos/${trabalho.id}/status`, JSON.stringify(novoStatus), { headers: { 'Content-Type': 'application/json' } });
             setTrabalho({ ...trabalho, status: novoStatus as any });
-            notify.success(`Status alterado para: ${novoStatus}`); // <-- TOAST AQUI
+            notify.success(`Status alterado para: ${novoStatus}`);
         } catch (error) {
             // interceptor cuida
         }
@@ -163,7 +166,7 @@ export function JobDetails() {
             await api.post('/Anexos/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
             const filesResponse = await api.get(`/Anexos/trabalho/${trabalho.id}`);
             setAnexos(filesResponse.data);
-            notify.success("Arquivo enviado com sucesso!"); // <-- TOAST AQUI
+            notify.success("Arquivo enviado com sucesso!");
             if(file.name.match(/\.(stl|obj)$/i)) {
                 const novoAnexo = filesResponse.data.find((a: Anexo) => a.nomeArquivo === file.name);
                 if (novoAnexo) setStlParaVisualizar(getFullUrl(novoAnexo.url));
@@ -185,16 +188,22 @@ export function JobDetails() {
         finally { setSendingMsg(false); }
     }
 
-    async function handleDeleteAnexo(anexoId: string) {
-        if(!confirm("Tem certeza que deseja excluir o anexo?")) return;
+    // === NOVA FUNÇÃO DE EXCLUSÃO (Com Modal) ===
+    async function confirmarExclusaoAnexo() {
+        if(!anexoParaExcluir) return;
         try {
-            await api.delete(`/Anexos/${anexoId}`);
-            setAnexos(anexos.filter(a => a.id !== anexoId));
-            notify.success("Anexo removido."); // <-- TOAST AQUI
-            const anexoDeletado = anexos.find(a => a.id === anexoId);
-            if(anexoDeletado && stlParaVisualizar && getFullUrl(anexoDeletado.url) === stlParaVisualizar) setStlParaVisualizar(null);
+            await api.delete(`/Anexos/${anexoParaExcluir}`);
+            setAnexos(anexos.filter(a => a.id !== anexoParaExcluir));
+            notify.success("Anexo removido.");
+
+            const anexoDeletado = anexos.find(a => a.id === anexoParaExcluir);
+            if(anexoDeletado && stlParaVisualizar && getFullUrl(anexoDeletado.url) === stlParaVisualizar) {
+                setStlParaVisualizar(null);
+            }
         } catch (error) {
             // interceptor
+        } finally {
+            setAnexoParaExcluir(null);
         }
     }
 
@@ -213,6 +222,23 @@ export function JobDetails() {
 
     return (
         <PageContainer primaryColor={brandColor}>
+
+            {/* === MODAL DE CONFIRMAÇÃO DE EXCLUSÃO === */}
+            {anexoParaExcluir && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">
+                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 mb-4">
+                            <Trash2 className="h-6 w-6 text-red-600" />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900 mb-2">Excluir Arquivo?</h3>
+                        <p className="text-sm text-slate-500 mb-6">Este arquivo será removido permanentemente deste trabalho.</p>
+                        <div className="flex gap-3">
+                            <button onClick={() => setAnexoParaExcluir(null)} className="flex-1 rounded-xl bg-slate-100 py-3 font-bold text-slate-600 hover:bg-slate-200 transition">Cancelar</button>
+                            <button onClick={confirmarExclusaoAnexo} className="flex-1 rounded-xl bg-red-600 py-3 font-bold text-white shadow-lg shadow-red-200 hover:bg-red-700 transition">Sim, Excluir</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="mx-auto max-w-7xl">
                 <button
@@ -308,7 +334,7 @@ export function JobDetails() {
                                                 <div className="flex items-center gap-2">
                                                     {is3D && <button onClick={() => setStlParaVisualizar(getFullUrl(anexo.url))} className="rounded-lg bg-white p-2 text-slate-500 shadow-sm border border-slate-100 transition hover:text-blue-600"><Eye className="h-4 w-4" /></button>}
                                                     <a href={getFullUrl(anexo.url)} download target="_blank" rel="noreferrer" className="rounded-lg bg-white p-2 text-slate-500 shadow-sm border border-slate-100 hover:text-green-600"><Download className="h-4 w-4" /></a>
-                                                    <button onClick={() => handleDeleteAnexo(anexo.id)} className="rounded-lg bg-white p-2 text-slate-300 shadow-sm border border-slate-100 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
+                                                    <button onClick={() => setAnexoParaExcluir(anexo.id)} className="rounded-lg bg-white p-2 text-slate-300 shadow-sm border border-slate-100 hover:text-red-500"><Trash2 className="h-4 w-4" /></button>
                                                 </div>
                                             </div>
                                         );

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { api } from '../services/api';
 import { PageContainer } from '../components/PageContainer';
-import { notify } from '../utils/notify'; // <-- NOVO IMPORT
+import { notify } from '../utils/notify';
 import {
     Plus, Trash2, Clock, Loader2, Save, X, Edit, Search, Image as ImageIcon
 } from 'lucide-react';
@@ -33,6 +33,9 @@ export function Services() {
     const [prazo, setPrazo] = useState('');
     const [fotoUrl, setFotoUrl] = useState('');
 
+    // === NOVO ESTADO: MODAL DE CONFIRMAÇÃO ===
+    const [servicoParaExcluir, setServicoParaExcluir] = useState<string | null>(null);
+
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
@@ -55,7 +58,7 @@ export function Services() {
         const file = e.target.files[0];
 
         if (file.size > 2 * 1024 * 1024) {
-            notify.error("A imagem deve ter no máximo 2MB."); // <-- TOAST AQUI
+            notify.error("A imagem deve ter no máximo 2MB.");
             return;
         }
 
@@ -68,7 +71,7 @@ export function Services() {
             });
             setFotoUrl(res.data.url);
         } catch (error) {
-            // O interceptor já lida com o erro visual se configurado
+            // interceptor trata
         }
     }
 
@@ -104,28 +107,31 @@ export function Services() {
         try {
             if (idEdicao) {
                 await api.put(`/Servicos/${idEdicao}`, payload);
-                notify.success("Serviço atualizado com sucesso!"); // <-- TOAST AQUI
+                notify.success("Serviço atualizado com sucesso!");
             } else {
                 await api.post('/Servicos', payload);
-                notify.success("Serviço adicionado com sucesso!"); // <-- TOAST AQUI
+                notify.success("Serviço adicionado com sucesso!");
             }
             handleCancelEdit();
             loadServicos();
         } catch (error) {
-            // Interceptor já trata
+            // Interceptor trata
         } finally {
             setSaving(false);
         }
     }
 
-    async function handleDelete(id: string) {
-        if (!confirm("Tem a certeza que deseja excluir?")) return;
+    // === NOVA FUNÇÃO DE EXCLUSÃO (Com Modal) ===
+    async function confirmarExclusao() {
+        if (!servicoParaExcluir) return;
         try {
-            await api.delete(`/Servicos/${id}`);
-            setServicos(servicos.filter(s => s.id !== id));
-            notify.success("Serviço excluído."); // <-- TOAST AQUI
+            await api.delete(`/Servicos/${servicoParaExcluir}`);
+            setServicos(servicos.filter(s => s.id !== servicoParaExcluir));
+            notify.success("Serviço excluído com sucesso.");
         } catch (error) {
-            // Interceptor já trata
+            // Interceptor trata
+        } finally {
+            setServicoParaExcluir(null);
         }
     }
 
@@ -139,6 +145,24 @@ export function Services() {
 
     return (
         <PageContainer primaryColor={primaryColor}>
+
+            {/* === MODAL DE CONFIRMAÇÃO DE EXCLUSÃO === */}
+            {servicoParaExcluir && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">
+                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 mb-4">
+                            <Trash2 className="h-6 w-6 text-red-600" />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900 mb-2">Excluir Serviço?</h3>
+                        <p className="text-sm text-slate-500 mb-6">Este serviço será removido do seu catálogo e deixará de estar disponível para novas clínicas.</p>
+                        <div className="flex gap-3">
+                            <button onClick={() => setServicoParaExcluir(null)} className="flex-1 rounded-xl bg-slate-100 py-3 font-bold text-slate-600 hover:bg-slate-200 transition">Cancelar</button>
+                            <button onClick={confirmarExclusao} className="flex-1 rounded-xl bg-red-600 py-3 font-bold text-white shadow-lg shadow-red-200 hover:bg-red-700 transition">Sim, Excluir</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="mb-8">
                 <h1 className="text-3xl font-bold text-slate-900">Serviços & Preços</h1>
                 <p className="text-slate-500">Gerencie o seu catálogo e adicione fotos para atrair clientes.</p>
@@ -302,7 +326,7 @@ export function Services() {
                                                 <button onClick={() => handleEditClick(s)} className="rounded-lg p-2 transition hover:bg-slate-100" style={{ color: primaryColor }}>
                                                     <Edit className="h-4 w-4" />
                                                 </button>
-                                                <button onClick={() => handleDelete(s.id)} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 transition">
+                                                <button onClick={() => setServicoParaExcluir(s.id)} className="rounded-lg p-2 text-slate-400 hover:bg-red-50 hover:text-red-600 transition">
                                                     <Trash2 className="h-4 w-4" />
                                                 </button>
                                             </div>

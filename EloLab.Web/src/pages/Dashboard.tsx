@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { useNavigate, useParams } from 'react-router-dom';
-import { notify } from '../utils/notify'; // <-- NOVO IMPORT
+import { notify } from '../utils/notify';
 import {
     TrendingUp, AlertCircle, Clock, CheckCircle,
     Filter, Search, Plus, Calendar, ArrowRight, Trash2, ArrowLeft, Wallet, BookOpen, X, Info
@@ -27,6 +27,9 @@ export function Dashboard() {
     const [busca, setBusca] = useState('');
     const [filtroStatus, setFiltroStatus] = useState('Todos');
     const [filtroMes, setFiltroMes] = useState('');
+
+    // === NOVO ESTADO: MODAL DE CONFIRMAÇÃO ===
+    const [trabalhoParaExcluir, setTrabalhoParaExcluir] = useState<string | null>(null);
 
     const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('pt-BR');
     const formatCurrency = (value: number) => new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
@@ -90,15 +93,17 @@ export function Dashboard() {
         loadData();
     }, [navigate, labId]);
 
-    async function handleDelete(id: string, e: React.MouseEvent) {
-        e.stopPropagation();
-        if (!confirm('Tem a certeza que deseja excluir este trabalho?')) return;
+    // === NOVA FUNÇÃO DE EXCLUSÃO (Com Modal) ===
+    async function confirmarExclusao() {
+        if (!trabalhoParaExcluir) return;
         try {
-            await api.delete(`/Trabalhos/${id}`);
-            setTrabalhos(prev => prev.filter(t => t.id !== id));
-            notify.success("Trabalho excluído com sucesso."); // <-- TOAST AQUI
+            await api.delete(`/Trabalhos/${trabalhoParaExcluir}`);
+            setTrabalhos(prev => prev.filter(t => t.id !== trabalhoParaExcluir));
+            notify.success("Trabalho excluído com sucesso.");
         } catch (error) {
             // interceptor cuida
+        } finally {
+            setTrabalhoParaExcluir(null);
         }
     }
 
@@ -139,6 +144,25 @@ export function Dashboard() {
 
     return (
         <PageContainer primaryColor={primaryColor}>
+
+            {/* === MODAL DE CONFIRMAÇÃO DE EXCLUSÃO === */}
+            {trabalhoParaExcluir && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">
+                        <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 mb-4">
+                            <Trash2 className="h-6 w-6 text-red-600" />
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900 mb-2">Excluir Trabalho?</h3>
+                        <p className="text-sm text-slate-500 mb-6">Esta ação não pode ser desfeita. Todos os ficheiros e mensagens associadas serão apagados.</p>
+                        <div className="flex gap-3">
+                            <button onClick={() => setTrabalhoParaExcluir(null)} className="flex-1 rounded-xl bg-slate-100 py-3 font-bold text-slate-600 hover:bg-slate-200 transition">Cancelar</button>
+                            <button onClick={confirmarExclusao} className="flex-1 rounded-xl bg-red-600 py-3 font-bold text-white shadow-lg shadow-red-200 hover:bg-red-700 transition">Sim, Excluir</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* === CATÁLOGO MODAL === */}
             {showCatalogue && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="relative w-full max-w-5xl h-[85vh] bg-slate-50 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
@@ -366,7 +390,7 @@ export function Dashboard() {
                                         <div className="flex items-center justify-end gap-3">
                                             {!isClinica && (
                                                 <button
-                                                    onClick={(e) => handleDelete(trabalho.id, e)}
+                                                    onClick={(e) => { e.stopPropagation(); setTrabalhoParaExcluir(trabalho.id); }}
                                                     className="rounded-lg p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 transition"
                                                     title="Apagar Trabalho"
                                                 >
