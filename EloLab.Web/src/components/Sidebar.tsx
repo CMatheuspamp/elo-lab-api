@@ -1,7 +1,8 @@
+import { useEffect, useState } from 'react'; // <--- Importei useEffect e useState
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
     LayoutDashboard, PlusCircle, Building2,
-    Tag, UserCircle, LogOut, Users // <--- Adicionei o ícone Users
+    Tag, UserCircle, LogOut, Users, Bell
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -16,6 +17,33 @@ export function Sidebar() {
     const primaryColor = localStorage.getItem('elolab_user_color') || '#2563EB';
     const logoUrl = localStorage.getItem('elolab_user_logo');
     // ============================
+
+    // === LÓGICA DO CONTADOR (BADGE) ===
+    const [unreadCount, setUnreadCount] = useState(0);
+
+    useEffect(() => {
+        async function fetchCount() {
+            try {
+                // Busca notificações para contar as não lidas
+                const res = await api.get('/Notificacoes');
+                const count = res.data.filter((n: any) => !n.lida).length;
+                setUnreadCount(count);
+            } catch (e) {
+                // Silencioso se falhar, para não poluir o console
+            }
+        }
+
+        fetchCount(); // Chama na montagem
+        const interval = setInterval(fetchCount, 30000); // Atualiza a cada 30s
+
+        return () => clearInterval(interval);
+    }, [location.pathname]); // Atualiza também ao mudar de página (ex: ao sair das notificações)
+
+    const getBadgeText = () => {
+        if (unreadCount === 0) return null;
+        return unreadCount > 5 ? '5+' : unreadCount;
+    };
+    // ==================================
 
     // === ESTILO GRADIENTE ===
     const sidebarStyle = {
@@ -42,35 +70,43 @@ export function Sidebar() {
             path: '/dashboard',
             show: userType === 'Laboratorio'
         },
-        // === NOVO: Clínicas (Só Laboratório) ===
+        // 2. Minhas Clínicas (Só Laboratório)
         {
             label: 'Minhas Clínicas',
             icon: Users,
             path: '/clinicas',
             show: userType === 'Laboratorio'
         },
-        // 2. Parceiros (Só Clínica vê isto)
+        // 3. Meus Laboratórios (Só Clínica)
         {
             label: 'Meus Laboratórios',
             icon: Building2,
             path: '/parceiros',
             show: userType === 'Clinica'
         },
-        // 3. Novo Pedido (Para todos)
+        // 4. Novo Pedido (Para todos)
         {
             label: 'Novo Pedido',
             icon: PlusCircle,
             path: '/trabalhos/novo',
             show: true
         },
-        // 4. Serviços (Só Lab)
+        // 5. Serviços (Só Lab)
         {
             label: 'Serviços & Preços',
             icon: Tag,
             path: '/servicos',
             show: userType === 'Laboratorio'
         },
-        // 5. Perfil (Para todos)
+        // === 6. NOTIFICAÇÕES (COM BADGE) ===
+        {
+            label: 'Notificações',
+            icon: Bell,
+            path: '/notificacoes',
+            show: true,
+            hasBadge: true // <--- Marcador para renderizar a bolinha
+        },
+        // 7. Perfil (Para todos)
         {
             label: 'Meu Perfil',
             icon: UserCircle,
@@ -131,7 +167,16 @@ export function Sidebar() {
                                 className={`h-5 w-5 transition-colors`}
                                 style={active ? { color: primaryColor } : {}}
                             />
-                            {item.label}
+
+                            {/* Texto do botão agora num span flex-1 para empurrar o badge */}
+                            <span className="flex-1 text-left">{item.label}</span>
+
+                            {/* Renderização do Badge (Contador) */}
+                            {item.hasBadge && getBadgeText() && (
+                                <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[10px] font-bold text-white shadow-sm animate-in zoom-in duration-300">
+                                    {getBadgeText()}
+                                </span>
+                            )}
                         </button>
                     );
                 })}

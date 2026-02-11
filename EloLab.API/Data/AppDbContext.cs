@@ -16,5 +16,6 @@ public class AppDbContext : DbContext
     public DbSet<Servico> Servicos { get; set; }
     public DbSet<Trabalho> Trabalhos { get; set; }
     public DbSet<Mensagem> Mensagens { get; set; }
+    public DbSet<Notificacao> Notificacoes { get; set; }
     public DbSet<Anexo> Anexos { get; set; }
 }

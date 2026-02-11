@@ -9,6 +9,7 @@ import { Profile } from './pages/Profile';
 import { PrintJob } from "./pages/PrintJob";
 import { Layout } from './components/Layout';
 import { Clinics } from './pages/Clinics';
+import { Notifications } from './pages/Notifications';
 import { Toaster } from 'react-hot-toast';
 
 function App() {
@@ -39,6 +40,7 @@ function App() {
                     <Route path="/trabalhos/novo" element={<NewJob />} />
                     <Route path="/trabalhos/:id" element={<JobDetails />} />
                     <Route path="/servicos" element={<Services />} />
+                    <Route path="/notificacoes" element={<Notifications />} />
                     <Route path="/perfil" element={<Profile />} />
                 </Route>
 

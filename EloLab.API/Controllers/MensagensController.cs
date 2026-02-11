@@ -72,6 +72,36 @@ public class MensagensController : ControllerBase
         _context.Mensagens.Add(mensagem);
         await _context.SaveChangesAsync();
 
+        // === DISPARAR NOTIFICAÇÃO DE MENSAGEM ===
+        // Substitua 'request.TrabalhoId' pela variável correta que usa no seu controller
+        var trabMensagem = await _context.Trabalhos
+            .Include(t => t.Clinica)
+            .Include(t => t.Laboratorio)
+            .Include(t => t.Servico)
+            .FirstOrDefaultAsync(t => t.Id == request.TrabalhoId);
+
+        if (trabMensagem != null)
+        {
+            var isLab = User.FindFirst("tipo")?.Value == "Laboratorio";
+    
+            // Se fui eu (Lab) a enviar, o destinatário é a Clínica, e vice-versa
+            var destinatarioId = isLab ? trabMensagem.ClinicaId : trabMensagem.LaboratorioId;
+            var remetenteNome = isLab ? trabMensagem.Laboratorio?.Nome : trabMensagem.Clinica?.Nome;
+    
+            var notifMensagem = new Notificacao
+            {
+                Id = Guid.NewGuid(),
+                UsuarioId = destinatarioId,
+                Titulo = "Nova Mensagem 💬",
+                Texto = $"{remetenteNome} enviou uma mensagem no trabalho de {trabMensagem.PacienteNome} ({(trabMensagem.Servico?.Nome ?? "Personalizado")}).",
+                LinkAction = $"/trabalhos/{trabMensagem.Id}",
+                CreatedAt = DateTime.UtcNow,
+                Lida = false
+            };
+            _context.Notificacoes.Add(notifMensagem);
+            await _context.SaveChangesAsync();
+        }
+        
         return Ok(mensagem);
     }
 }

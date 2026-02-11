@@ -88,6 +88,27 @@ public class TrabalhosController : ControllerBase
 
         _context.Trabalhos.Add(trabalho);
         await _context.SaveChangesAsync();
+        
+        // === DISPARAR NOTIFICAÇÃO DE NOVO PEDIDO (Clínica -> Lab) ===
+        var tipoUser = User.FindFirst("tipo")?.Value;
+        if (tipoUser == "Clinica")
+        {
+            var clinicaNotif = await _context.Clinicas.FindAsync(request.ClinicaId);
+            var servicoNotif = request.ServicoId.HasValue ? await _context.Servicos.FindAsync(request.ServicoId.Value) : null;
+    
+            var novaNotificacao = new Notificacao
+            {
+                Id = Guid.NewGuid(),
+                UsuarioId = request.LaboratorioId, // Vai para o dono do Laboratório
+                Titulo = "Novo Pedido Recebido 📦",
+                Texto = $"{clinicaNotif?.Nome} enviou um novo trabalho para {request.PacienteNome} ({(servicoNotif?.Nome ?? "Personalizado")}).",
+                LinkAction = $"/trabalhos/{trabalho.Id}",
+                CreatedAt = DateTime.UtcNow,
+                Lida = false
+            };
+            _context.Notificacoes.Add(novaNotificacao);
+            await _context.SaveChangesAsync();
+        }
 
         return Ok(trabalho);
     }
@@ -120,6 +141,28 @@ public class TrabalhosController : ControllerBase
 
         trabalho.Status = novoStatus;
         await _context.SaveChangesAsync();
+        
+        // === DISPARAR NOTIFICAÇÃO DE STATUS (Lab -> Clínica) ===
+        var tipoUserStatus = User.FindFirst("tipo")?.Value;
+        if (tipoUserStatus == "Laboratorio")
+        {
+            var trabCompleto = await _context.Trabalhos.Include(t => t.Servico).FirstOrDefaultAsync(t => t.Id == trabalhoId);
+            if (trabCompleto != null)
+            {
+                var notificacaoStatus = new Notificacao
+                {
+                    Id = Guid.NewGuid(),
+                    UsuarioId = trabCompleto.ClinicaId, // Vai para a Clínica
+                    Titulo = "Status Atualizado ✨",
+                    Texto = $"O trabalho de {trabCompleto.PacienteNome} ({(trabCompleto.Servico?.Nome ?? "Personalizado")}) mudou para: {novoStatus}",
+                    LinkAction = $"/trabalhos/{trabCompleto.Id}",
+                    CreatedAt = DateTime.UtcNow,
+                    Lida = false
+                };
+                _context.Notificacoes.Add(notificacaoStatus);
+                await _context.SaveChangesAsync();
+            }
+        }
 
         return Ok(new { mensagem = "Status atualizado", novoStatus = trabalho.Status });
     }
