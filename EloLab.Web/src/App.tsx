@@ -8,10 +8,18 @@ import { Partners } from "./pages/Partners";
 import { Profile } from './pages/Profile';
 import { PrintJob } from "./pages/PrintJob";
 import { Layout } from './components/Layout';
+import { Toaster } from 'react-hot-toast';
 
 function App() {
     return (
         <BrowserRouter>
+            <Toaster
+                position="top-right"
+                toastOptions={{
+                    className: 'text-sm font-bold shadow-xl rounded-xl',
+                    duration: 4000,
+                }}
+            />
             <Routes>
                 {/* Rotas Públicas */}
                 <Route path="/" element={<Login />} />

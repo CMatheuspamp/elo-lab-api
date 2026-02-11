@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '../services/api';
 import { Lock, Mail, Loader2, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { notify } from '../utils/notify'; // <--- IMPORT DO NOSSO NOTIFY
 
 export function Login() {
     const [email, setEmail] = useState('');
@@ -44,7 +45,8 @@ export function Login() {
             }
 
         } catch (error) {
-            alert('Falha na autenticação. Verifique suas credenciais.');
+            // === NOVO: Usa a nossa notificação de erro ===
+            notify.error('Falha na autenticação. Verifique suas credenciais.');
         } finally {
             setLoading(false);
         }

@@ -1,13 +1,13 @@
 using EloLab.API.Data;
 using EloLab.API.DTOs;
 using EloLab.API.Models;
-using Microsoft.AspNetCore.Authorization; // <--- Adicionado
+using Microsoft.AspNetCore.Authorization; 
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
 namespace EloLab.API.Controllers;
 
-[Authorize] // <--- Protege o controller para podermos ler o User (Token)
+[Authorize] 
 [ApiController]
 [Route("api/[controller]")]
 public class ClinicasController : ControllerBase
@@ -19,15 +19,9 @@ public class ClinicasController : ControllerBase
         _context = context;
     }
 
-    // =============================================================
-    // [NOVO] 1. LISTAR MINHAS CLÍNICAS (Para o Dropdown do Frontend)
-    // =============================================================
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Clinica>>> GetMinhasClinicas()
     {
-        // EM VEZ DE FILTRAR PELO VÍNCULO, VAMOS RETORNAR TUDO POR ENQUANTO
-        // Isso permite que você veja a clínica que criou e teste o sistema.
-        
         var todasClinicas = await _context.Clinicas
             .OrderBy(c => c.Nome)
             .ToListAsync();
@@ -35,9 +29,6 @@ public class ClinicasController : ControllerBase
         return Ok(todasClinicas);
     }
 
-    // =============================================================
-    // [ANTIGO - MANTIDO] 2. CRIAR CLÍNICA E VÍNCULO
-    // =============================================================
     [HttpPost]
     public async Task<IActionResult> CriarClinica([FromBody] CriarClinicaRequest request)
     {
@@ -72,13 +63,9 @@ public class ClinicasController : ControllerBase
         return CreatedAtAction(nameof(GetClinicasDoLaboratorio), new { labId = request.LaboratorioId }, novaClinica);
     }
 
-    // =============================================================
-    // [ANTIGO - MANTIDO] 3. LISTAR POR ID ESPECÍFICO
-    // =============================================================
     [HttpGet("por-laboratorio/{labId}")]
     public async Task<IActionResult> GetClinicasDoLaboratorio(Guid labId)
     {
-        // Ajustei levemente a query para usar o .Include (é mais performático que o Select aninhado)
         var clinicas = await _context.LaboratorioClinicas
             .Where(elo => elo.LaboratorioId == labId && elo.Ativo)
             .Include(elo => elo.Clinica)
@@ -88,23 +75,21 @@ public class ClinicasController : ControllerBase
         return Ok(clinicas);
     }
     
-    // PUT: api/Clinicas/me
     [HttpPut("me")]
-    public async Task<IActionResult> AtualizarMeuPerfil([FromBody] DTOs.AtualizarPerfilRequest request)
+    public async Task<IActionResult> AtualizarMeuPerfil([FromBody] AtualizarPerfilRequest request)
     {
-        // 1. Identificar quem está logado
-        var userId = Guid.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value!);
+        // 1. Identificar quem está logado (Agora usando o clinicaId que é muito mais seguro e direto)
+        var clinicaIdClaim = User.FindFirst("clinicaId")?.Value;
+        if (clinicaIdClaim == null) return Unauthorized();
 
         // 2. Buscar a Clínica
-        var clinica = await _context.Clinicas.FirstOrDefaultAsync(c => c.UsuarioId == userId);
+        var clinica = await _context.Clinicas.FindAsync(Guid.Parse(clinicaIdClaim));
         if (clinica == null) return NotFound("Perfil de clínica não encontrado.");
 
-        // 3. Atualizar Dados
+        // 3. Atualizar Dados (CORRIGIDO: Telefone descomentado)
         clinica.Nome = request.Nome;
         clinica.EmailContato = request.EmailContato;
-        // Se a sua tabela Clinicas não tiver 'Telefone' na Migration, remova a linha abaixo.
-        // Mas se tiver (como adicionamos no Laboratorio), mantenha.
-        // clinica.Telefone = request.Telefone; 
+        clinica.Telefone = request.Telefone; 
         clinica.Nif = request.Nif;
         clinica.Endereco = request.Endereco;
 

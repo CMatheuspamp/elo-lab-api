@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { supabase } from '../services/supabase';
 import { PageContainer } from '../components/PageContainer';
+import { notify } from '../utils/notify'; // <-- NOVO IMPORT
 import {
     ArrowLeft, Building2, CheckCircle, FileText, Loader2, Play,
     Package, Euro, Paperclip, UploadCloud, Trash2, Send, MessageSquare,
@@ -12,7 +13,6 @@ import {
 import type { Trabalho } from '../types';
 import { StlViewer } from '../components/StlViewer';
 
-// Interfaces Locais
 interface Anexo {
     id: string;
     nomeArquivo: string;
@@ -32,12 +32,8 @@ export function JobDetails() {
     const { id } = useParams();
     const navigate = useNavigate();
 
-    // =========================================================================
-    // 🎨 IMERSÃO TOTAL (Identidade do Laboratório Parceiro)
-    // =========================================================================
     const [brandColor, setBrandColor] = useState('#2563EB');
 
-    // Utilitários de URL
     const getBaseUrl = () => {
         const baseURL = api.defaults.baseURL || '';
         return baseURL.replace(/\/api\/?$/, '');
@@ -50,7 +46,6 @@ export function JobDetails() {
         return `${getBaseUrl()}${cleanPath}`;
     }
 
-    // Estados
     const [trabalho, setTrabalho] = useState<Trabalho | null>(null);
     const [anexos, setAnexos] = useState<Anexo[]>([]);
     const [mensagens, setMensagens] = useState<Mensagem[]>([]);
@@ -58,7 +53,6 @@ export function JobDetails() {
     const [meuId, setMeuId] = useState<string>('');
     const [souLaboratorio, setSouLaboratorio] = useState(false);
 
-    // Loading & UI
     const [loading, setLoading] = useState(true);
     const [erroCarregamento, setErroCarregamento] = useState('');
     const [updating, setUpdating] = useState(false);
@@ -73,7 +67,6 @@ export function JobDetails() {
         loadData();
     }, [id, navigate]);
 
-    // Realtime Chat
     useEffect(() => {
         if (!id) return;
         const channel = supabase
@@ -99,28 +92,21 @@ export function JobDetails() {
 
     async function loadData() {
         try {
-            // 1. Quem sou eu?
             const meRes = await api.get('/Auth/me');
             const dadosUser = meRes.data;
             setMeuId(dadosUser.meusDados.usuarioId || dadosUser.id);
             setSouLaboratorio(dadosUser.tipo === 'Laboratorio');
 
-            // 2. Carregar o Trabalho
             const workResponse = await api.get(`/Trabalhos/${id}`);
             const workData = workResponse.data;
             setTrabalho(workData);
 
-            // === 🎨 APLICA A IDENTIDADE DO LABORATÓRIO ===
-            // Se o trabalho tem dados do laboratório e cor, usa essa cor (Imersão para a Clínica)
             if (workData.laboratorio && workData.laboratorio.corPrimaria) {
                 setBrandColor(workData.laboratorio.corPrimaria);
             } else if (dadosUser.tipo === 'Laboratorio') {
-                // Se eu sou o laboratório vendo meu próprio trabalho, uso minha cor configurada
                 setBrandColor(localStorage.getItem('elolab_user_color') || '#2563EB');
             }
-            // ============================================
 
-            // 3. Carregar Anexos e STL
             try {
                 const filesResponse = await api.get(`/Anexos/trabalho/${id}`);
                 setAnexos(filesResponse.data);
@@ -152,7 +138,10 @@ export function JobDetails() {
         try {
             await api.patch(`/Trabalhos/${trabalho.id}/status`, JSON.stringify(novoStatus), { headers: { 'Content-Type': 'application/json' } });
             setTrabalho({ ...trabalho, status: novoStatus as any });
-        } catch (error) { alert('Erro ao atualizar status'); }
+            notify.success(`Status alterado para: ${novoStatus}`); // <-- TOAST AQUI
+        } catch (error) {
+            // interceptor cuida
+        }
         finally { setUpdating(false); }
     }
 
@@ -174,11 +163,14 @@ export function JobDetails() {
             await api.post('/Anexos/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
             const filesResponse = await api.get(`/Anexos/trabalho/${trabalho.id}`);
             setAnexos(filesResponse.data);
+            notify.success("Arquivo enviado com sucesso!"); // <-- TOAST AQUI
             if(file.name.match(/\.(stl|obj)$/i)) {
                 const novoAnexo = filesResponse.data.find((a: Anexo) => a.nomeArquivo === file.name);
                 if (novoAnexo) setStlParaVisualizar(getFullUrl(novoAnexo.url));
             }
-        } catch (error) { alert("Erro ao enviar arquivo."); }
+        } catch (error) {
+            // interceptor
+        }
         finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
     }
 
@@ -194,27 +186,22 @@ export function JobDetails() {
     }
 
     async function handleDeleteAnexo(anexoId: string) {
-        if(!confirm("Tem certeza?")) return;
+        if(!confirm("Tem certeza que deseja excluir o anexo?")) return;
         try {
             await api.delete(`/Anexos/${anexoId}`);
             setAnexos(anexos.filter(a => a.id !== anexoId));
+            notify.success("Anexo removido."); // <-- TOAST AQUI
             const anexoDeletado = anexos.find(a => a.id === anexoId);
             if(anexoDeletado && stlParaVisualizar && getFullUrl(anexoDeletado.url) === stlParaVisualizar) setStlParaVisualizar(null);
-        } catch (error) { alert("Erro ao excluir."); }
+        } catch (error) {
+            // interceptor
+        }
     }
 
-    // === NAVEGAÇÃO INTELIGENTE (CORREÇÃO AQUI) ===
     function handleBack() {
-        if (souLaboratorio) {
-            // Se sou Laboratório, volto para o meu dashboard geral
-            navigate('/dashboard');
-        } else if (trabalho?.laboratorioId) {
-            // Se sou Clínica, volto para o portal específico do laboratório deste trabalho
-            navigate(`/portal/${trabalho.laboratorioId}`);
-        } else {
-            // Fallback caso não tenha ID do laboratório
-            navigate('/parceiros');
-        }
+        if (souLaboratorio) navigate('/dashboard');
+        else if (trabalho?.laboratorioId) navigate(`/portal/${trabalho.laboratorioId}`);
+        else navigate('/parceiros');
     }
 
     if (loading) return <div className="flex h-screen items-center justify-center text-slate-400"><Loader2 className="animate-spin" /></div>;
@@ -225,11 +212,9 @@ export function JobDetails() {
     const isConcluido = trabalho.status === 'Concluido';
 
     return (
-        // Usando PageContainer para manter o padrão visual e a imersão da cor
         <PageContainer primaryColor={brandColor}>
 
             <div className="mx-auto max-w-7xl">
-                {/* Botão de Voltar com a nova lógica */}
                 <button
                     onClick={handleBack}
                     className="mb-6 flex items-center gap-2 text-sm font-medium text-slate-500 hover:text-slate-800 transition"
@@ -238,7 +223,6 @@ export function JobDetails() {
                     {souLaboratorio ? 'Voltar ao Dashboard' : 'Voltar ao Painel do Parceiro'}
                 </button>
 
-                {/* Card do Topo */}
                 <div className="mb-8 flex flex-col justify-between gap-6 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm md:flex-row md:items-center">
                     <div>
                         <div className="flex items-center gap-4">
@@ -276,7 +260,6 @@ export function JobDetails() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-                    {/* Coluna Esquerda */}
                     <div className="lg:col-span-2 space-y-8">
                         {stlParaVisualizar && (
                             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-900 shadow-sm">
@@ -335,7 +318,6 @@ export function JobDetails() {
                         </div>
                     </div>
 
-                    {/* Coluna Direita (Chat + Infos) */}
                     <div className="space-y-6">
                         <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                             <h3 className="mb-4 text-sm font-bold uppercase tracking-wider text-slate-400">Planeamento</h3>

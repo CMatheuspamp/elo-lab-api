@@ -1,7 +1,8 @@
 import { useEffect, useState, useRef } from 'react';
 import { api } from '../services/api';
 import { useNavigate } from 'react-router-dom';
-import { PageContainer } from '../components/PageContainer'; // <--- IMPORTADO
+import { PageContainer } from '../components/PageContainer';
+import { notify } from '../utils/notify'; // <-- NOVO IMPORT
 import {
     User, Mail, Phone, MapPin, FileText,
     Save, Loader2, Building2, Upload, Palette, Image as ImageIcon
@@ -13,7 +14,6 @@ export function Profile() {
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
 
-    // === WHITE LABEL ===
     const [primaryColor, setPrimaryColor] = useState(localStorage.getItem('elolab_user_color') || '#2563EB');
     const [logoUrl, setLogoUrl] = useState(localStorage.getItem('elolab_user_logo') || '');
 
@@ -27,7 +27,6 @@ export function Profile() {
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // === CORREÇÃO DE URL DE IMAGEM ===
     const getFullUrl = (url: string) => {
         if (!url) return '';
         if (url.startsWith('http')) return url;
@@ -68,6 +67,11 @@ export function Profile() {
         if (!e.target.files || e.target.files.length === 0) return;
         const file = e.target.files[0];
 
+        if (file.size > 2 * 1024 * 1024) {
+            notify.error("A imagem deve ter no máximo 2MB.");
+            return;
+        }
+
         const formData = new FormData();
         formData.append('arquivo', file);
 
@@ -77,7 +81,7 @@ export function Profile() {
             });
             setLogoUrl(res.data.url);
         } catch (error) {
-            alert("Erro ao enviar logo. Tente uma imagem menor (JPG/PNG).");
+            // interceptor cuida
         }
     }
 
@@ -102,11 +106,9 @@ export function Profile() {
                 localStorage.removeItem('elolab_user_logo');
             }
 
-            window.location.reload();
-            alert("✅ Perfil e aparência atualizados!");
+            notify.success("Perfil e aparência atualizados!"); // <-- TOAST AQUI
 
         } catch (error) {
-            alert("Erro ao atualizar perfil.");
             setSaving(false);
         }
     }
@@ -116,7 +118,6 @@ export function Profile() {
     const isLab = userType === 'Laboratorio';
 
     return (
-        // === PAGE CONTAINER ADICIONADO ===
         <PageContainer primaryColor={primaryColor}>
             <div className="mx-auto max-w-4xl">
                 <div className="mb-8">
@@ -133,7 +134,6 @@ export function Profile() {
                             </h3>
 
                             <div className="flex flex-col gap-8 md:flex-row md:items-start">
-                                {/* Preview e Upload da Logo */}
                                 <div className="flex flex-col items-center gap-4">
                                     <div
                                         className="relative flex h-32 w-32 items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 transition hover:border-blue-400"
@@ -165,7 +165,6 @@ export function Profile() {
                                     </button>
                                 </div>
 
-                                {/* Seletor de Cor */}
                                 <div className="flex-1 space-y-4">
                                     <div>
                                         <label className="mb-2 block text-sm font-bold text-slate-700">Cor da Marca</label>

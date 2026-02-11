@@ -1,18 +1,17 @@
 import { useEffect, useState, useRef } from 'react';
 import { api } from '../services/api';
 import { PageContainer } from '../components/PageContainer';
+import { notify } from '../utils/notify'; // <-- NOVO IMPORT
 import {
     Plus, Trash2, Clock, Loader2, Save, X, Edit, Search, Image as ImageIcon
-} from 'lucide-react'; // <--- REMOVIDO UploadCloud
+} from 'lucide-react';
 import type { Servico } from '../types';
 
 const MATERIAIS = ["Zircónia", "E-max", "Metal", "Acrílico", "Cerâmica", "Outros"];
 
 export function Services() {
-    // === WHITE LABEL ===
     const primaryColor = localStorage.getItem('elolab_user_color') || '#2563EB';
 
-    // Helper de URL para Imagens
     const getFullUrl = (url: string) => {
         if (!url) return '';
         if (url.startsWith('http')) return url;
@@ -27,13 +26,12 @@ export function Services() {
     const [filtroMaterial, setFiltroMaterial] = useState('Todos');
     const [busca, setBusca] = useState('');
 
-    // Estados do Formulário
     const [idEdicao, setIdEdicao] = useState<string | null>(null);
     const [nome, setNome] = useState('');
     const [material, setMaterial] = useState('Zircónia');
     const [preco, setPreco] = useState('');
     const [prazo, setPrazo] = useState('');
-    const [fotoUrl, setFotoUrl] = useState(''); // Novo estado para a foto
+    const [fotoUrl, setFotoUrl] = useState('');
 
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -52,14 +50,12 @@ export function Services() {
         }
     }
 
-    // Função de Upload de Imagem
     async function handleImageUpload(e: React.ChangeEvent<HTMLInputElement>) {
         if (!e.target.files || e.target.files.length === 0) return;
         const file = e.target.files[0];
 
-        // Validação simples de tamanho (ex: 2MB)
         if (file.size > 2 * 1024 * 1024) {
-            alert("A imagem deve ter no máximo 2MB.");
+            notify.error("A imagem deve ter no máximo 2MB."); // <-- TOAST AQUI
             return;
         }
 
@@ -67,13 +63,12 @@ export function Services() {
         formData.append('arquivo', file);
 
         try {
-            // Usando o endpoint de logo como exemplo genérico de upload de imagem pública
             const res = await api.post('/Laboratorios/logo', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
             setFotoUrl(res.data.url);
         } catch (error) {
-            alert("Erro ao enviar imagem.");
+            // O interceptor já lida com o erro visual se configurado
         }
     }
 
@@ -83,7 +78,7 @@ export function Services() {
         setMaterial(s.material || 'Outros');
         setPreco(s.precoBase.toString());
         setPrazo(s.prazoDiasUteis ? s.prazoDiasUteis.toString() : '5');
-        setFotoUrl(s.fotoUrl || ''); // Carrega a foto existente
+        setFotoUrl(s.fotoUrl || '');
     }
 
     function handleCancelEdit() {
@@ -104,18 +99,20 @@ export function Services() {
             precoBase: parseFloat(preco),
             prazoDiasUteis: parseInt(prazo),
             descricao: "",
-            fotoUrl: fotoUrl // Envia a URL da foto para o backend
+            fotoUrl: fotoUrl
         };
         try {
             if (idEdicao) {
                 await api.put(`/Servicos/${idEdicao}`, payload);
+                notify.success("Serviço atualizado com sucesso!"); // <-- TOAST AQUI
             } else {
                 await api.post('/Servicos', payload);
+                notify.success("Serviço adicionado com sucesso!"); // <-- TOAST AQUI
             }
             handleCancelEdit();
             loadServicos();
         } catch (error) {
-            alert("Erro ao salvar serviço.");
+            // Interceptor já trata
         } finally {
             setSaving(false);
         }
@@ -126,8 +123,9 @@ export function Services() {
         try {
             await api.delete(`/Servicos/${id}`);
             setServicos(servicos.filter(s => s.id !== id));
+            notify.success("Serviço excluído."); // <-- TOAST AQUI
         } catch (error) {
-            alert("Erro ao excluir.");
+            // Interceptor já trata
         }
     }
 
@@ -147,7 +145,6 @@ export function Services() {
             </div>
 
             <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
-                {/* Form */}
                 <div className="lg:col-span-1">
                     <div className={`sticky top-6 rounded-2xl border p-6 shadow-sm transition-colors bg-white border-slate-200`}
                          style={idEdicao ? { borderColor: primaryColor, backgroundColor: `${primaryColor}05` } : {}}>
@@ -164,7 +161,6 @@ export function Services() {
                         </div>
                         <form onSubmit={handleSave} className="space-y-5">
 
-                            {/* Área de Upload de Foto */}
                             <div>
                                 <label className="mb-1.5 block text-xs font-bold text-slate-400 uppercase">Foto do Serviço</label>
                                 <div
@@ -193,7 +189,6 @@ export function Services() {
                                 <label className="mb-1.5 block text-xs font-bold text-slate-400 uppercase">Nome</label>
                                 <input required type="text" value={nome} onChange={e => setNome(e.target.value)}
                                        className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm font-medium outline-none transition focus:ring-2 focus:ring-opacity-50"
-                                    // REMOVIDO O STYLE INVÁLIDO AQUI
                                        onFocus={(e) => e.target.style.borderColor = primaryColor}
                                        onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
                                        placeholder="Ex: Coroa Total" />
@@ -236,7 +231,6 @@ export function Services() {
                     </div>
                 </div>
 
-                {/* Listagem */}
                 <div className="lg:col-span-2 space-y-6">
                     <div className="flex flex-col gap-4">
                         <div className="relative">
@@ -281,7 +275,6 @@ export function Services() {
                                 {servicosFiltrados.map((s) => (
                                     <div key={s.id} className="group flex items-center justify-between p-5 hover:bg-slate-50 transition">
                                         <div className="flex items-center gap-5">
-                                            {/* Miniatura da Imagem na Lista */}
                                             <div className="h-12 w-12 rounded-lg bg-slate-100 overflow-hidden border border-slate-200 flex-shrink-0">
                                                 {s.fotoUrl ? (
                                                     <img src={getFullUrl(s.fotoUrl)} className="h-full w-full object-cover" alt={s.nome} />

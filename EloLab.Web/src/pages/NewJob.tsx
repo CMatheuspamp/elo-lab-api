@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { PageContainer } from '../components/PageContainer';
+import toast from 'react-hot-toast'; // <--- IMPORT DO TOAST
+import { notify } from '../utils/notify'; // <--- IMPORT DO NOSSO NOTIFY
 import {
     ArrowLeft, Save, Loader2, Calendar, User, FileText,
     Building2, Palette, Euro, UploadCloud,
@@ -96,7 +98,6 @@ export function NewJob() {
         if (!user) return;
 
         if (!isLab && parceiroSelecionadoId) {
-            // Se mudou o parceiro e não é a carga inicial do catálogo, limpa o serviço
             if (!preSelectedServiceId && listaServicos.length === 0) {
                 setListaServicos([]);
                 setServicoId('');
@@ -280,20 +281,26 @@ export function NewJob() {
             const trabalhoId = response.data.id;
 
             if (arquivos.length > 0 && trabalhoId) {
+                // === NOVO: Mostra toast de carregamento ao enviar arquivos pesados ===
+                toast.loading("A enviar anexos...", { id: "upload-toast" });
                 for (const arquivo of arquivos) {
                     const formData = new FormData();
                     formData.append('arquivo', arquivo);
                     await api.post(`/Trabalhos/${trabalhoId}/anexo`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
                 }
+                toast.dismiss("upload-toast");
             }
-            alert('✅ Pedido criado com sucesso!');
+
+            // === NOVO: Usa a nossa notificação bonita ===
+            notify.success('Pedido criado com sucesso!');
 
             if (!isLab && preSelectedLabId) navigate(`/portal/${preSelectedLabId}`);
             else if (!isLab) navigate('/parceiros');
             else navigate('/dashboard');
 
         } catch (error) {
-            alert('Erro ao criar trabalho.');
+            toast.dismiss("upload-toast"); // Limpa o toast de carregamento se falhar
+            // O interceptor do api.ts mostrará o erro automaticamente
         } finally {
             setLoading(false);
         }

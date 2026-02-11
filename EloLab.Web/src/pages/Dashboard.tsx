@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { useNavigate, useParams } from 'react-router-dom';
+import { notify } from '../utils/notify'; // <-- NOVO IMPORT
 import {
     TrendingUp, AlertCircle, Clock, CheckCircle,
     Filter, Search, Plus, Calendar, ArrowRight, Trash2, ArrowLeft, Wallet, BookOpen, X, Info
@@ -17,12 +18,10 @@ export function Dashboard() {
     const [labInfo, setLabInfo] = useState<any>(null);
     const [loading, setLoading] = useState(true);
 
-    // === ESTADOS DO CATÁLOGO ===
     const [showCatalogue, setShowCatalogue] = useState(false);
     const [catalogoServicos, setCatalogoServicos] = useState<Servico[]>([]);
     const [servicoDetalhe, setServicoDetalhe] = useState<Servico | null>(null);
 
-    // Filtros
     const [clinicaSelecionadaId, setClinicaSelecionadaId] = useState('Todos');
     const [clinicasParaFiltro, setClinicasParaFiltro] = useState<any[]>([]);
     const [busca, setBusca] = useState('');
@@ -97,7 +96,10 @@ export function Dashboard() {
         try {
             await api.delete(`/Trabalhos/${id}`);
             setTrabalhos(prev => prev.filter(t => t.id !== id));
-        } catch (error) { alert('Erro ao excluir trabalho.'); }
+            notify.success("Trabalho excluído com sucesso."); // <-- TOAST AQUI
+        } catch (error) {
+            // interceptor cuida
+        }
     }
 
     function limparFiltros() {
@@ -137,12 +139,9 @@ export function Dashboard() {
 
     return (
         <PageContainer primaryColor={primaryColor}>
-
-            {/* === CATÁLOGO MODAL === */}
             {showCatalogue && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="relative w-full max-w-5xl h-[85vh] bg-slate-50 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
-
                         <div className="flex items-center justify-between p-6 bg-white border-b border-slate-100">
                             <div>
                                 <h2 className="text-2xl font-bold text-slate-900">Catálogo de Serviços</h2>
@@ -152,7 +151,6 @@ export function Dashboard() {
                                 <X className="h-6 w-6 text-slate-400" />
                             </button>
                         </div>
-
                         <div className="flex-1 overflow-y-auto p-6 lg:p-8">
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                                 {catalogoServicos.map(s => (
@@ -174,7 +172,6 @@ export function Dashboard() {
                                                 {s.material || 'Geral'}
                                             </div>
                                         </div>
-
                                         <div className="p-5 flex flex-col flex-1">
                                             <h3 className="font-bold text-lg text-slate-900 mb-1 group-hover:text-blue-600 transition">{s.nome}</h3>
                                             <div className="flex items-center gap-2 text-xs text-slate-500 mb-4">
@@ -190,8 +187,6 @@ export function Dashboard() {
                             </div>
                         </div>
                     </div>
-
-                    {/* === MODAL DE DETALHE === */}
                     {servicoDetalhe && (
                         <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in zoom-in duration-200">
                             <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col md:flex-row max-h-[80vh]">
@@ -204,10 +199,8 @@ export function Dashboard() {
                                 </div>
                                 <div className="p-8 md:w-1/2 flex flex-col">
                                     <button onClick={(e) => { e.stopPropagation(); setServicoDetalhe(null); }} className="self-end mb-4 text-slate-400 hover:text-slate-600"><X className="h-6 w-6"/></button>
-
                                     <span className="text-xs font-bold uppercase tracking-wider text-blue-600 mb-2">{servicoDetalhe.material}</span>
                                     <h2 className="text-3xl font-bold text-slate-900 mb-4">{servicoDetalhe.nome}</h2>
-
                                     <div className="space-y-4 mb-8">
                                         <div className="flex items-center justify-between py-2 border-b border-slate-100">
                                             <span className="text-sm text-slate-500">Prazo de Entrega</span>
@@ -218,7 +211,6 @@ export function Dashboard() {
                                             <span className="text-2xl font-black text-slate-900">{formatCurrency(servicoDetalhe.precoBase)}</span>
                                         </div>
                                     </div>
-
                                     <button
                                         onClick={() => {
                                             setServicoDetalhe(null);
@@ -250,7 +242,6 @@ export function Dashboard() {
             )}
 
             <div className="space-y-8">
-                {/* Banner */}
                 <div className="relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-100">
                     <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
                         <div className="flex items-center gap-6">
@@ -262,7 +253,6 @@ export function Dashboard() {
                                     {displayName.charAt(0)}
                                 </div>
                             )}
-
                             <div>
                                 <h2 className="text-3xl font-bold text-slate-900 leading-tight">
                                     {displayName}
@@ -275,9 +265,7 @@ export function Dashboard() {
                                 </div>
                             </div>
                         </div>
-
                         <div className="flex gap-3">
-                            {/* BOTÃO CATÁLOGO (Apenas Clínica) */}
                             {isClinica && (
                                 <button
                                     onClick={() => setShowCatalogue(true)}
@@ -287,7 +275,6 @@ export function Dashboard() {
                                     Ver Catálogo
                                 </button>
                             )}
-
                             <button
                                 onClick={() => navigate('/trabalhos/novo', { state: { preSelectedLabId: labId, preSelectedLabColor: primaryColor } })}
                                 className="group flex items-center gap-3 rounded-2xl px-8 py-4 text-base font-bold text-white shadow-xl transition-all hover:-translate-y-1 hover:shadow-2xl"
@@ -302,7 +289,6 @@ export function Dashboard() {
                     </div>
                 </div>
 
-                {/* Cards */}
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
                     <div className="relative overflow-hidden rounded-2xl bg-white p-6 shadow-sm border border-slate-100 group hover:border-slate-200 transition">
                         <div className="flex items-center justify-between">
@@ -314,7 +300,6 @@ export function Dashboard() {
                         </div>
                         <div className="absolute bottom-0 left-0 h-1 w-full" style={{ backgroundColor: primaryColor }}></div>
                     </div>
-
                     <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between">
                         <div>
                             <p className="text-xs font-bold uppercase text-slate-400">{labelNovos}</p>
@@ -322,7 +307,6 @@ export function Dashboard() {
                         </div>
                         <AlertCircle className="h-8 w-8 text-orange-500" />
                     </div>
-
                     <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between">
                         <div><p className="text-xs font-bold uppercase text-slate-400">Em Produção</p><h3 className="mt-2 text-2xl font-black text-slate-900">{emProducao}</h3></div>
                         <Clock className="h-8 w-8 text-blue-600" />
@@ -333,7 +317,6 @@ export function Dashboard() {
                     </div>
                 </div>
 
-                {/* Filtros */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                     <div className="mb-6 flex items-center justify-between">
                         <h3 className="flex items-center gap-2 text-sm font-bold text-slate-700">
@@ -364,7 +347,6 @@ export function Dashboard() {
                     </div>
                 </div>
 
-                {/* Tabela */}
                 <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                     <table className="w-full text-left text-sm text-slate-600">
                         <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-400 tracking-wider">
@@ -381,9 +363,7 @@ export function Dashboard() {
                                     <td className="px-6 py-4 font-bold">{formatCurrency(trabalho.valorFinal)}</td>
                                     <td className="px-6 py-4"><span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold ${statusInfo.color}`}><statusInfo.icon className="h-3 w-3" /> {statusInfo.label}</span></td>
                                     <td className="px-6 py-4 text-right">
-                                        {/* CORREÇÃO DO ALINHAMENTO AQUI */}
                                         <div className="flex items-center justify-end gap-3">
-                                            {/* === BOTÃO DE DELETE PROTEGIDO === */}
                                             {!isClinica && (
                                                 <button
                                                     onClick={(e) => handleDelete(trabalho.id, e)}
