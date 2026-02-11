@@ -1,7 +1,7 @@
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
     LayoutDashboard, PlusCircle, Building2,
-    Tag, UserCircle, LogOut
+    Tag, UserCircle, LogOut, Users // <--- Adicionei o ícone Users
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -42,12 +42,19 @@ export function Sidebar() {
             path: '/dashboard',
             show: userType === 'Laboratorio'
         },
-        // 2. Parceiros (AGORA: Só Clínica vê isto)
+        // === NOVO: Clínicas (Só Laboratório) ===
         {
-            label: 'Meus Laboratórios', // Mudei o nome para ficar mais claro para a clínica
+            label: 'Minhas Clínicas',
+            icon: Users,
+            path: '/clinicas',
+            show: userType === 'Laboratorio'
+        },
+        // 2. Parceiros (Só Clínica vê isto)
+        {
+            label: 'Meus Laboratórios',
             icon: Building2,
             path: '/parceiros',
-            show: userType === 'Clinica' // <--- ALTERAÇÃO AQUI: O Lab não vê mais
+            show: userType === 'Clinica'
         },
         // 3. Novo Pedido (Para todos)
         {

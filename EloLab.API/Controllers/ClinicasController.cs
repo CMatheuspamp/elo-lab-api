@@ -42,6 +42,7 @@ public class ClinicasController : ControllerBase
         {
             Nome = request.Nome,
             EmailContato = request.Email,
+            Telefone = request.Telefone,
             Nif = request.Nif,
             Endereco = request.Endereco,
             CreatedAt = DateTime.UtcNow

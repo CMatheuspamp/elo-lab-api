@@ -8,6 +8,7 @@ import { Partners } from "./pages/Partners";
 import { Profile } from './pages/Profile';
 import { PrintJob } from "./pages/PrintJob";
 import { Layout } from './components/Layout';
+import { Clinics } from './pages/Clinics';
 import { Toaster } from 'react-hot-toast';
 
 function App() {
@@ -34,6 +35,7 @@ function App() {
                     <Route path="/portal/:labId" element={<Dashboard />} />
 
                     <Route path="/parceiros" element={<Partners />} />
+                    <Route path="/clinicas" element={<Clinics />} />
                     <Route path="/trabalhos/novo" element={<NewJob />} />
                     <Route path="/trabalhos/:id" element={<JobDetails />} />
                     <Route path="/servicos" element={<Services />} />
