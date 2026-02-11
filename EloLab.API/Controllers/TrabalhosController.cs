@@ -26,13 +26,9 @@ public class TrabalhosController : ControllerBase
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Trabalho>>> GetTrabalhos()
     {
-        // Tenta ler o ID do Laboratório direto do Token
         var labIdClaim = User.FindFirst("laboratorioId")?.Value;
-        
-        // Tenta ler o ID da Clínica direto do Token
         var clinicaIdClaim = User.FindFirst("clinicaId")?.Value;
 
-        // CENÁRIO 1: É UM LABORATÓRIO
         if (!string.IsNullOrEmpty(labIdClaim) && Guid.TryParse(labIdClaim, out var labId))
         {
             return await _context.Trabalhos
@@ -43,7 +39,6 @@ public class TrabalhosController : ControllerBase
                 .ToListAsync();
         }
 
-        // CENÁRIO 2: É UMA CLÍNICA
         if (!string.IsNullOrEmpty(clinicaIdClaim) && Guid.TryParse(clinicaIdClaim, out var clinicaId))
         {
             return await _context.Trabalhos
@@ -54,7 +49,6 @@ public class TrabalhosController : ControllerBase
                 .ToListAsync();
         }
 
-        // Se não tiver nenhum ID no token (algo errado com o login), retorna vazio
         return Ok(new List<Trabalho>());
     }
 
@@ -66,7 +60,6 @@ public class TrabalhosController : ControllerBase
     {
         decimal valorFinalCalculado = 0;
 
-        // Lógica de Preço
         if (request.ValorPersonalizado.HasValue)
         {
             valorFinalCalculado = request.ValorPersonalizado.Value;
@@ -77,17 +70,16 @@ public class TrabalhosController : ControllerBase
             if (servico != null) valorFinalCalculado = servico.PrecoBase;
         }
 
-        // Monta o objeto
         var trabalho = new Trabalho
         {
-            // Se o ID vier na request, usa. Se não, tenta pegar do token (segurança extra)
             LaboratorioId = request.LaboratorioId, 
             ClinicaId = request.ClinicaId,
             ServicoId = request.ServicoId,
             PacienteNome = request.PacienteNome,
             Dentes = request.Dentes,
             CorDente = request.CorDente,
-            DescricaoPersonalizada = request.Observacoes,
+            // CORREÇÃO AQUI: Agora lê da propriedade correta do request
+            DescricaoPersonalizada = request.DescricaoPersonalizada, 
             DataEntregaPrevista = request.DataEntrega.ToUniversalTime(),
             ValorFinal = valorFinalCalculado,
             Status = "Pendente",
@@ -148,7 +140,6 @@ public class TrabalhosController : ControllerBase
         
         if (!permitidos.Contains(extensao)) return BadRequest($"Formato {extensao} não suportado.");
 
-        // Salvar no Disco
         var pastaUploads = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
         if (!Directory.Exists(pastaUploads)) Directory.CreateDirectory(pastaUploads);
 
@@ -160,9 +151,8 @@ public class TrabalhosController : ControllerBase
             await arquivo.CopyToAsync(stream);
         }
 
-        var urlPublica = $"/uploads/{nomeUnico}"; // URL relativa
+        var urlPublica = $"/uploads/{nomeUnico}";
 
-        // Criar registro no banco
         var anexo = new Anexo
         {
             Id = Guid.NewGuid(),
@@ -176,7 +166,6 @@ public class TrabalhosController : ControllerBase
 
         _context.Anexos.Add(anexo);
         
-        // Define como "capa" se for STL/OBJ ou se for o primeiro arquivo
         if (string.IsNullOrEmpty(trabalho.ArquivoUrl) || extensao == ".stl" || extensao == ".obj")
         {
             trabalho.ArquivoUrl = urlPublica;
@@ -203,14 +192,11 @@ public class TrabalhosController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteTrabalho(Guid id)
     {
-        // 1. Carrega o trabalho
         var trabalho = await _context.Trabalhos.FindAsync(id);
         if (trabalho == null) return NotFound();
 
         try 
         {
-            // 2. Carrega e Apaga Mensagens (Chat)
-            // O ToListAsync() garante que trazemos tudo para a memória antes de marcar para exclusão
             var mensagens = await _context.Mensagens
                 .Where(m => m.TrabalhoId == id)
                 .ToListAsync();
@@ -218,41 +204,27 @@ public class TrabalhosController : ControllerBase
             if (mensagens.Any())
                 _context.Mensagens.RemoveRange(mensagens);
 
-            // 3. Carrega e Apaga Anexos
             var anexos = await _context.Anexos
                 .Where(a => a.TrabalhoId == id)
                 .ToListAsync();
 
             if (anexos.Any())
             {
-                // Opcional: Aqui poderia apagar o ficheiro físico do disco também
-                /*
-                foreach (var anexo in anexos)
-                {
-                    var path = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", anexo.Url.TrimStart('/'));
-                    if (System.IO.File.Exists(path)) System.IO.File.Delete(path);
-                }
-                */
                 _context.Anexos.RemoveRange(anexos);
             }
 
-            // 4. Apaga o Trabalho
             _context.Trabalhos.Remove(trabalho);
-            
-            // 5. Commit da Transação
             await _context.SaveChangesAsync();
 
             return NoContent();
         }
         catch (DbUpdateException dbEx)
         {
-            // Captura erro específico de banco de dados (Foreign Key, etc)
             var innerMessage = dbEx.InnerException?.Message ?? dbEx.Message;
             return StatusCode(500, new { erro = "Erro de banco de dados ao excluir", detalhe = innerMessage });
         }
         catch (Exception ex)
         {
-            // Erro genérico
             return StatusCode(500, new { erro = "Erro interno ao excluir", detalhe = ex.Message });
         }
     }
