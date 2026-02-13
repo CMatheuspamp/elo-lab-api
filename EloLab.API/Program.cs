@@ -5,47 +5,62 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using Supabase; // <--- Importante
 using System.Text;
 using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // ==============================================================================
-// 1. CONFIGURAÇÃO DE AMBIENTE E BANCO DE DADOS (CRÍTICO PARA O RENDER)
+// 1. CONFIGURAÇÃO DO BANCO DE DADOS (PostgreSQL)
 // ==============================================================================
-
-// Tenta pegar a conexão do arquivo local ou da variável de ambiente do Render
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
                        ?? Environment.GetEnvironmentVariable("DB_CONNECTION_STRING");
 
 if (string.IsNullOrEmpty(connectionString))
 {
-    throw new Exception("ERRO FATAL: String de conexão com o banco não encontrada.");
+    // Fallback para desenvolvimento local se não achar nada
+    throw new Exception("String de conexão não encontrada. Configure DB_CONNECTION_STRING.");
 }
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
 // ==============================================================================
-// 2. CONFIGURAÇÃO DE CORS (PARA O FRONTEND ACESSAR)
+// 2. CONFIGURAÇÃO DO SUPABASE CLIENT (SDK) - O QUE FALTVAVA
 // ==============================================================================
-builder.Services.AddCors(options =>
+// Tenta pegar do Render (Env Vars) ou do appsettings.json (Local)
+var supabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL") 
+                  ?? builder.Configuration["SupabaseSettings:Url"];
+
+var supabaseKey = Environment.GetEnvironmentVariable("SUPABASE_KEY") 
+                  ?? builder.Configuration["SupabaseSettings:Key"];
+
+if (string.IsNullOrEmpty(supabaseUrl) || string.IsNullOrEmpty(supabaseKey))
 {
-    options.AddPolicy("AllowAll", policy =>
+    // Não crashamos aqui para não derrubar o deploy, mas o login vai falhar se isso for nulo
+    Console.WriteLine("AVISO: Configurações do Supabase (URL/Key) não encontradas!");
+}
+else 
+{
+    var options = new SupabaseOptions
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
-    });
-});
+        AutoRefreshToken = true,
+        AutoConnectRealtime = false
+    };
+
+    // Injeta o Cliente Supabase para o AuthController usar
+    builder.Services.AddScoped<Supabase.Client>(_ => 
+        new Supabase.Client(supabaseUrl, supabaseKey, options));
+}
 
 // ==============================================================================
-// 3. CONFIGURAÇÃO DE AUTENTICAÇÃO (JWT)
+// 3. AUTENTICAÇÃO E JWT
 // ==============================================================================
-// Usa a chave do appsettings ou uma variável de ambiente, com fallback para dev
-var jwtKey = builder.Configuration["Jwt:Key"] 
-             ?? Environment.GetEnvironmentVariable("JWT_KEY") 
-             ?? "chave_secreta_padrao_para_desenvolvimento_apenas";
+var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY") 
+             ?? builder.Configuration["Jwt:Key"]
+             ?? builder.Configuration["SupabaseSettings:JwtSecret"] // Tenta pegar o segredo do Supabase também
+             ?? "chave_secreta_fallback_apenas_para_dev";
 
 var key = Encoding.ASCII.GetBytes(jwtKey);
 
@@ -62,12 +77,21 @@ builder.Services.AddAuthentication(x =>
     {
         ValidateIssuerSigningKey = true,
         IssuerSigningKey = new SymmetricSecurityKey(key),
-        ValidateIssuer = false, // Simplificado para evitar erros de domínio
+        ValidateIssuer = false,
         ValidateAudience = false
     };
 });
 
-// 4. Configuração dos Controllers (JSON)
+// 4. CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+    });
+});
+
+// 5. Controllers e JSON
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -75,83 +99,46 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     });
 
-// 5. Swagger
+// 6. Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SwaggerDoc("v1", new OpenApiInfo { Title = "EloLab API", Version = "v1" });
     c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
-        Name = "Authorization",
-        Type = SecuritySchemeType.ApiKey,
-        Scheme = "Bearer",
-        BearerFormat = "JWT",
-        In = ParameterLocation.Header,
-        Description = "Insira o token assim: Bearer SEU_TOKEN"
+        Name = "Authorization", Type = SecuritySchemeType.ApiKey, Scheme = "Bearer", BearerFormat = "JWT", In = ParameterLocation.Header, Description = "JWT Authorization header using the Bearer scheme."
     });
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
-        {
-            new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } },
-            new string[] {}
-        }
+        { new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } }, new string[] {} }
     });
 });
 
 var app = builder.Build();
 
 // ==============================================================================
-// 6. AUTO-MIGRATION (CRÍTICO: CRIA O BANCO SOZINHO NO RENDER)
+// 7. AUTO-MIGRATION
 // ==============================================================================
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    try 
-    {
-        Console.WriteLine("A aplicar migrações do banco de dados...");
-        dbContext.Database.Migrate(); 
-        Console.WriteLine("Banco de dados atualizado com sucesso!");
-    }
-    catch (Exception ex)
-    {
-        Console.WriteLine($"ERRO AO APLICAR MIGRATIONS: {ex.Message}");
-    }
+    try { dbContext.Database.Migrate(); } catch { }
 }
 
-// Configurações do Pipeline
 app.UseSwagger();
 app.UseSwaggerUI();
-
-// Removemos HttpsRedirection no Render pois ele gere o SSL externamente e pode causar loops
-// app.UseHttpsRedirection(); 
-
 app.UseCors("AllowAll");
 
-// 7. Arquivos Estáticos (Uploads e 3D)
+// 8. Arquivos Estáticos
 var provider = new FileExtensionContentTypeProvider();
 provider.Mappings[".stl"] = "application/vnd.ms-pki.stl";
-provider.Mappings[".obj"] = "model/obj";
-
 var caminhoWwwRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
 if (!Directory.Exists(caminhoWwwRoot)) Directory.CreateDirectory(caminhoWwwRoot);
-
-app.UseStaticFiles(new StaticFileOptions
-{
-    FileProvider = new PhysicalFileProvider(caminhoWwwRoot),
-    ContentTypeProvider = provider,
-    OnPrepareResponse = ctx =>
-    {
-        ctx.Context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
-    }
-});
+app.UseStaticFiles(new StaticFileOptions { FileProvider = new PhysicalFileProvider(caminhoWwwRoot), ContentTypeProvider = provider });
 
 app.UseAuthentication();
 app.UseAuthorization();
-
 app.MapControllers();
 
-// ==============================================================================
-// 8. CONFIGURAÇÃO DE PORTA (OBRIGATÓRIO PARA O RENDER)
-// ==============================================================================
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
 app.Run($"http://0.0.0.0:{port}");
