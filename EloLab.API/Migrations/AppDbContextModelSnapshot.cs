@@ -166,19 +166,28 @@ namespace EloLab.API.Migrations
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
 
                     b.Property<bool>("Ativo")
-                        .HasColumnType("boolean");
+                        .HasColumnType("boolean")
+                        .HasColumnName("ativo");
 
                     b.Property<Guid>("ClinicaId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("clinica_id");
 
                     b.Property<DateTime>("CreatedAt")
-                        .HasColumnType("timestamp with time zone");
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
 
                     b.Property<Guid>("LaboratorioId")
-                        .HasColumnType("uuid");
+                        .HasColumnType("uuid")
+                        .HasColumnName("laboratorio_id");
+
+                    b.Property<Guid?>("TabelaPrecoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tabela_preco_id");
 
                     b.HasKey("Id");
 
@@ -186,7 +195,30 @@ namespace EloLab.API.Migrations
 
                     b.HasIndex("LaboratorioId");
 
-                    b.ToTable("LaboratorioClinicas");
+                    b.HasIndex("TabelaPrecoId");
+
+                    b.ToTable("laboratorio_clinicas");
+                });
+
+            modelBuilder.Entity("EloLab.API.Models.Material", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<Guid>("LaboratorioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("laboratorio_id");
+
+                    b.Property<string>("Nome")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("nome");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("materiais");
                 });
 
             modelBuilder.Entity("EloLab.API.Models.Mensagem", b =>
@@ -223,6 +255,37 @@ namespace EloLab.API.Migrations
                     b.HasIndex("TrabalhoId");
 
                     b.ToTable("mensagens");
+                });
+
+            modelBuilder.Entity("EloLab.API.Models.Notificacao", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("Lida")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("LinkAction")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Texto")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Titulo")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<Guid>("UsuarioId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("notificacoes");
                 });
 
             modelBuilder.Entity("EloLab.API.Models.Servico", b =>
@@ -275,6 +338,59 @@ namespace EloLab.API.Migrations
                     b.HasIndex("LaboratorioId");
 
                     b.ToTable("servicos");
+                });
+
+            modelBuilder.Entity("EloLab.API.Models.TabelaItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<decimal>("Preco")
+                        .HasColumnType("numeric")
+                        .HasColumnName("preco");
+
+                    b.Property<Guid>("ServicoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("servico_id");
+
+                    b.Property<Guid>("TabelaPrecoId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("tabela_preco_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ServicoId");
+
+                    b.HasIndex("TabelaPrecoId");
+
+                    b.ToTable("tabela_itens");
+                });
+
+            modelBuilder.Entity("EloLab.API.Models.TabelaPreco", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("LaboratorioId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("laboratorio_id");
+
+                    b.Property<string>("Nome")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("nome");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("tabelas_precos");
                 });
 
             modelBuilder.Entity("EloLab.API.Models.Trabalho", b =>
@@ -370,9 +486,15 @@ namespace EloLab.API.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.HasOne("EloLab.API.Models.TabelaPreco", "TabelaPreco")
+                        .WithMany()
+                        .HasForeignKey("TabelaPrecoId");
+
                     b.Navigation("Clinica");
 
                     b.Navigation("Laboratorio");
+
+                    b.Navigation("TabelaPreco");
                 });
 
             modelBuilder.Entity("EloLab.API.Models.Mensagem", b =>
@@ -395,6 +517,25 @@ namespace EloLab.API.Migrations
                         .IsRequired();
 
                     b.Navigation("Laboratorio");
+                });
+
+            modelBuilder.Entity("EloLab.API.Models.TabelaItem", b =>
+                {
+                    b.HasOne("EloLab.API.Models.Servico", "Servico")
+                        .WithMany()
+                        .HasForeignKey("ServicoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("EloLab.API.Models.TabelaPreco", "TabelaPreco")
+                        .WithMany("Itens")
+                        .HasForeignKey("TabelaPrecoId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Servico");
+
+                    b.Navigation("TabelaPreco");
                 });
 
             modelBuilder.Entity("EloLab.API.Models.Trabalho", b =>
@@ -420,6 +561,11 @@ namespace EloLab.API.Migrations
                     b.Navigation("Laboratorio");
 
                     b.Navigation("Servico");
+                });
+
+            modelBuilder.Entity("EloLab.API.Models.TabelaPreco", b =>
+                {
+                    b.Navigation("Itens");
                 });
 #pragma warning restore 612, 618
         }

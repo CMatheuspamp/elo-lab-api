@@ -14,6 +14,7 @@ public class AppDbContext : DbContext
     public DbSet<Clinica> Clinicas { get; set; }
     public DbSet<LaboratorioClinica> LaboratorioClinicas { get; set; }
     public DbSet<Servico> Servicos { get; set; }
+    public DbSet<Material> Materiais { get; set; }
     public DbSet<Trabalho> Trabalhos { get; set; }
     public DbSet<Mensagem> Mensagens { get; set; }
     public DbSet<Notificacao> Notificacoes { get; set; }
