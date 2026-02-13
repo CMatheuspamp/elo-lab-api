@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'; // <--- Importei useEffect e useSta
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
     LayoutDashboard, PlusCircle, Building2,
-    Tag, UserCircle, LogOut, Users, Bell
+    Tag, UserCircle, LogOut, Users, Bell, ScrollText
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -96,6 +96,12 @@ export function Sidebar() {
             label: 'Serviços & Preços',
             icon: Tag,
             path: '/servicos',
+            show: userType === 'Laboratorio'
+        },
+        {
+            label: 'Tabelas de Preços',
+            icon: ScrollText,
+            path: '/tabelas',
             show: userType === 'Laboratorio'
         },
         // === 6. NOTIFICAÇÕES (COM BADGE) ===

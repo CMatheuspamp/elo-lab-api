@@ -6,7 +6,7 @@ import {
     TrendingUp, AlertCircle, Clock, CheckCircle,
     Filter, Search, Plus, Calendar, ArrowRight, Trash2, ArrowLeft, Wallet, BookOpen, X, Info
 } from 'lucide-react';
-import type { UserSession, Trabalho, Servico } from '../types';
+import type { UserSession, Trabalho } from '../types';
 import { PageContainer } from '../components/PageContainer';
 
 export function Dashboard() {
@@ -19,8 +19,8 @@ export function Dashboard() {
     const [loading, setLoading] = useState(true);
 
     const [showCatalogue, setShowCatalogue] = useState(false);
-    const [catalogoServicos, setCatalogoServicos] = useState<Servico[]>([]);
-    const [servicoDetalhe, setServicoDetalhe] = useState<Servico | null>(null);
+    const [catalogoServicos, setCatalogoServicos] = useState<any[]>([]); // Alterado para any para aceitar 'isTabela'
+    const [servicoDetalhe, setServicoDetalhe] = useState<any | null>(null);
 
     const [clinicaSelecionadaId, setClinicaSelecionadaId] = useState('Todos');
     const [clinicasParaFiltro, setClinicasParaFiltro] = useState<any[]>([]);
@@ -68,16 +68,22 @@ export function Dashboard() {
                 let lista = trabalhosResponse.data;
 
                 if (isClinica && labId) {
+                    // === VISÃO DA CLÍNICA (PORTAL DO PARCEIRO) ===
                     lista = lista.filter((t: Trabalho) => t.laboratorioId === labId);
 
                     const labsRes = await api.get('/Laboratorios');
                     const currentLab = labsRes.data.find((l: any) => l.id === labId);
                     if (currentLab) setLabInfo(currentLab);
 
-                    const servicosRes = await api.get(`/Servicos/laboratorio/${labId}`);
+                    // --- ALTERAÇÃO AQUI ---
+                    // Antes: Buscava lista geral (/Servicos/laboratorio/ID)
+                    // Agora: Busca lista filtrada pela tabela (/Servicos/por-clinica/MEU_ID?laboratorioId=LAB_ID)
+                    const servicosRes = await api.get(`/Servicos/por-clinica/${userData.meusDados.id}?laboratorioId=${labId}`);
                     setCatalogoServicos(servicosRes.data);
+                    // ----------------------
 
                 } else {
+                    // === VISÃO DO LABORATÓRIO (DASHBOARD GERAL) ===
                     const clinicasRes = await api.get('/Clinicas');
                     setClinicasParaFiltro(clinicasRes.data);
                 }
@@ -192,9 +198,11 @@ export function Dashboard() {
                                                     <span className="text-xs font-bold uppercase tracking-wider">Sem Imagem</span>
                                                 </div>
                                             )}
-                                            <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-slate-700 shadow-sm">
-                                                {s.material || 'Geral'}
-                                            </div>
+                                            {s.material && (
+                                                <div className="absolute top-3 right-3 bg-white/90 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold text-slate-700 shadow-sm">
+                                                    {s.material}
+                                                </div>
+                                            )}
                                         </div>
                                         <div className="p-5 flex flex-col flex-1">
                                             <h3 className="font-bold text-lg text-slate-900 mb-1 group-hover:text-blue-600 transition">{s.nome}</h3>
@@ -202,8 +210,14 @@ export function Dashboard() {
                                                 <Clock className="h-3 w-3" /> {s.prazoDiasUteis} dias úteis
                                             </div>
                                             <div className="mt-auto flex items-center justify-between border-t border-slate-50 pt-4">
-                                                <span className="text-xl font-black text-slate-900">{formatCurrency(s.precoBase)}</span>
-                                                <span className="text-xs font-bold text-blue-600 uppercase tracking-wide opacity-0 group-hover:opacity-100 transition">Ver Detalhes</span>
+                                                <span className={`text-xl font-black ${s.isTabela ? 'text-emerald-600' : 'text-slate-900'}`}>
+                                                    {formatCurrency(s.precoBase)}
+                                                </span>
+                                                {s.isTabela ? (
+                                                    <span className="text-xs font-bold text-emerald-600 uppercase tracking-wide bg-emerald-50 px-2 py-1 rounded-lg">Preço VIP</span>
+                                                ) : (
+                                                    <span className="text-xs font-bold text-blue-600 uppercase tracking-wide opacity-0 group-hover:opacity-100 transition">Ver Detalhes</span>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -232,7 +246,7 @@ export function Dashboard() {
                                         </div>
                                         <div className="flex items-center justify-between py-2 border-b border-slate-100">
                                             <span className="text-sm text-slate-500">Valor Estimado</span>
-                                            <span className="text-2xl font-black text-slate-900">{formatCurrency(servicoDetalhe.precoBase)}</span>
+                                            <span className={`text-2xl font-black ${servicoDetalhe.isTabela ? 'text-emerald-600' : 'text-slate-900'}`}>{formatCurrency(servicoDetalhe.precoBase)}</span>
                                         </div>
                                     </div>
                                     <button
@@ -389,13 +403,7 @@ export function Dashboard() {
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex items-center justify-end gap-3">
                                             {!isClinica && (
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); setTrabalhoParaExcluir(trabalho.id); }}
-                                                    className="rounded-lg p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 transition"
-                                                    title="Apagar Trabalho"
-                                                >
-                                                    <Trash2 className="h-4 w-4" />
-                                                </button>
+                                                <button onClick={(e) => { e.stopPropagation(); setTrabalhoParaExcluir(trabalho.id); }} className="rounded-lg p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 transition"><Trash2 className="h-4 w-4" /></button>
                                             )}
                                             <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-slate-600 transition" />
                                         </div>

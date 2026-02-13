@@ -4,7 +4,7 @@ import { PageContainer } from '../components/PageContainer';
 import { notify } from '../utils/notify';
 import {
     Building2, Plus, Search, Mail, Phone,
-    MapPin, FileText, Loader2, X, Save, Trash2, Unlink, AlertTriangle
+    MapPin, FileText, Loader2, X, Save, Trash2, Unlink, AlertTriangle, ScrollText
 } from 'lucide-react';
 import type { UserSession } from '../types';
 
@@ -15,23 +15,26 @@ export function Clinics() {
     const [saving, setSaving] = useState(false);
     const [user, setUser] = useState<UserSession | null>(null);
 
-    // Lista de Clínicas
+    // Dados
     const [clinicas, setClinicas] = useState<any[]>([]);
+    const [tabelasDisponiveis, setTabelasDisponiveis] = useState<any[]>([]);
     const [busca, setBusca] = useState('');
 
-    // Modal de Cadastro
-    const [showModal, setShowModal] = useState(false);
+    // Modals
+    const [showModal, setShowModal] = useState(false); // Cadastro
+    const [deleteModal, setDeleteModal] = useState<{ isOpen: boolean; clinica: any | null }>({ isOpen: false, clinica: null });
+
+    // Modal de Associar Tabela
+    const [tabelaModal, setTabelaModal] = useState<{ isOpen: boolean; clinica: any | null; tabelaId: string }>({
+        isOpen: false, clinica: null, tabelaId: ''
+    });
+
+    // Form Cadastro
     const [nome, setNome] = useState('');
     const [email, setEmail] = useState('');
     const [telefone, setTelefone] = useState('');
     const [nif, setNif] = useState('');
     const [endereco, setEndereco] = useState('');
-
-    // === ESTADO DO MODAL DE CONFIRMAÇÃO (DELETE) ===
-    const [deleteModal, setDeleteModal] = useState<{
-        isOpen: boolean;
-        clinica: any | null;
-    }>({ isOpen: false, clinica: null });
 
     useEffect(() => {
         loadData();
@@ -44,8 +47,13 @@ export function Clinics() {
             setUser(userData);
 
             if (userData.tipo === 'Laboratorio') {
+                // 1. Carrega Clínicas
                 const clinicasRes = await api.get('/Clinicas');
                 setClinicas(clinicasRes.data);
+
+                // 2. Carrega Tabelas Disponíveis (para o dropdown)
+                const tabelasRes = await api.get('/TabelasPrecos');
+                setTabelasDisponiveis(tabelasRes.data);
             }
         } catch (error) {
             console.error(error);
@@ -54,6 +62,7 @@ export function Clinics() {
         }
     }
 
+    // === AÇÃO DE SALVAR CLÍNICA ===
     async function handleAddClinica(e: React.FormEvent) {
         e.preventDefault();
         if (!user) return;
@@ -72,21 +81,16 @@ export function Clinics() {
         }
     }
 
-    // === FUNÇÃO DE APAGAR / DESVINCULAR ===
+    // === AÇÃO DE APAGAR / DESVINCULAR ===
     async function handleConfirmDelete() {
         if (!deleteModal.clinica) return;
-
         try {
             await api.delete(`/Clinicas/${deleteModal.clinica.id}`);
-
-            // Mensagem personalizada dependendo do tipo
             if (deleteModal.clinica.usuarioId) {
                 notify.success('Vínculo com a clínica encerrado.');
             } else {
                 notify.success('Clínica removida com sucesso.');
             }
-
-            // Atualiza a lista visualmente sem precisar de reload
             setClinicas(prev => prev.filter(c => c.id !== deleteModal.clinica.id));
         } catch (error) {
             notify.error("Erro ao remover clínica.");
@@ -95,23 +99,97 @@ export function Clinics() {
         }
     }
 
+    // === LÓGICA DE ASSOCIAR TABELA ===
+    function openTabelaModal(clinica: any) {
+        setTabelaModal({
+            isOpen: true,
+            clinica: clinica,
+            tabelaId: clinica.tabelaPrecoId || ''
+        });
+    }
+
+    async function handleSaveTabela() {
+        if (!tabelaModal.clinica) return;
+
+        try {
+            const payload = { tabelaId: tabelaModal.tabelaId || null };
+            await api.patch(`/Clinicas/${tabelaModal.clinica.id}/tabela`, payload);
+
+            notify.success("Tabela atualizada com sucesso!");
+
+            // Atualiza localmente o nome da tabela
+            const nomeNovaTabela = tabelaModal.tabelaId
+                ? tabelasDisponiveis.find(t => t.id === tabelaModal.tabelaId)?.nome
+                : "Padrão";
+
+            setClinicas(prev => prev.map(c =>
+                c.id === tabelaModal.clinica.id
+                    ? { ...c, tabelaPrecoId: tabelaModal.tabelaId || null, nomeTabela: nomeNovaTabela }
+                    : c
+            ));
+
+            setTabelaModal({ isOpen: false, clinica: null, tabelaId: '' });
+        } catch (e) {
+            notify.error("Erro ao atualizar tabela.");
+        }
+    }
+
     const clinicasFiltradas = clinicas.filter(c =>
         c.nome.toLowerCase().includes(busca.toLowerCase()) ||
         (c.nif && c.nif.includes(busca))
     );
 
-    // Helpers para texto do modal
+    // Helpers para texto do modal Delete
     const isManual = deleteModal.clinica && !deleteModal.clinica.usuarioId;
     const modalTitle = isManual ? 'Apagar Clínica?' : 'Encerrar Parceria?';
     const modalMessage = isManual
         ? `Tem a certeza que deseja apagar a clínica "${deleteModal.clinica?.nome}"? Todos os dados deste registo manual serão perdidos permanentemente.`
-        : `Tem a certeza que deseja desvincular a clínica "${deleteModal.clinica?.nome}"? Ela deixará de ter acesso ao seu laboratório, mas a conta deles continuará a existir.`;
+        : `Tem a certeza que deseja desvincular a clínica "${deleteModal.clinica?.nome}"? Ela deixará de ter acesso ao seu laboratório.`;
     const confirmButtonText = isManual ? 'Sim, Apagar' : 'Sim, Desvincular';
 
     if (loading) return <div className="flex min-h-screen items-center justify-center text-slate-400"><Loader2 className="h-8 w-8 animate-spin" /></div>;
 
     return (
         <PageContainer primaryColor={primaryColor}>
+
+            {/* === MODAL ASSOCIAR TABELA === */}
+            {tabelaModal.isOpen && (
+                <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6">
+                        <div className="flex items-center gap-3 mb-4 text-slate-800">
+                            <div className="bg-blue-50 p-2 rounded-lg text-blue-600">
+                                <ScrollText className="h-6 w-6" />
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold">Definir Tabela</h3>
+                                <p className="text-xs text-slate-500">{tabelaModal.clinica?.nome}</p>
+                            </div>
+                        </div>
+
+                        <div className="mb-6">
+                            <label className="text-xs font-bold text-slate-500 uppercase block mb-2">Selecione a Tabela</label>
+                            <select
+                                value={tabelaModal.tabelaId}
+                                onChange={e => setTabelaModal({ ...tabelaModal, tabelaId: e.target.value })}
+                                className="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-blue-500 bg-white text-slate-700"
+                            >
+                                <option value="">Padrão (Preço Base)</option>
+                                {tabelasDisponiveis.map(t => (
+                                    <option key={t.id} value={t.id}>{t.nome}</option>
+                                ))}
+                            </select>
+                            <p className="text-xs text-slate-400 mt-2">
+                                Se escolher "Padrão", serão usados os preços base dos serviços.
+                            </p>
+                        </div>
+
+                        <div className="flex gap-3">
+                            <button onClick={() => setTabelaModal({ isOpen: false, clinica: null, tabelaId: '' })} className="flex-1 rounded-xl bg-slate-100 py-2.5 font-bold text-slate-600 hover:bg-slate-200 transition">Cancelar</button>
+                            <button onClick={handleSaveTabela} className="flex-1 rounded-xl py-2.5 font-bold text-white shadow-lg bg-blue-600 hover:bg-blue-700 transition">Salvar</button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* === MODAL DE CONFIRMAÇÃO (DELETE) === */}
             {deleteModal.isOpen && (
@@ -121,22 +199,10 @@ export function Clinics() {
                             <AlertTriangle className="h-7 w-7" />
                         </div>
                         <h3 className="text-xl font-bold text-slate-900 mb-2">{modalTitle}</h3>
-                        <p className="text-sm text-slate-500 mb-8 leading-relaxed">
-                            {modalMessage}
-                        </p>
+                        <p className="text-sm text-slate-500 mb-8 leading-relaxed">{modalMessage}</p>
                         <div className="flex gap-3">
-                            <button
-                                onClick={() => setDeleteModal({ isOpen: false, clinica: null })}
-                                className="flex-1 rounded-xl bg-slate-100 py-3 font-bold text-slate-600 hover:bg-slate-200 transition"
-                            >
-                                Cancelar
-                            </button>
-                            <button
-                                onClick={handleConfirmDelete}
-                                className="flex-1 rounded-xl py-3 font-bold text-white shadow-lg shadow-red-200 bg-red-600 hover:bg-red-700 transition"
-                            >
-                                {confirmButtonText}
-                            </button>
+                            <button onClick={() => setDeleteModal({ isOpen: false, clinica: null })} className="flex-1 rounded-xl bg-slate-100 py-3 font-bold text-slate-600 hover:bg-slate-200 transition">Cancelar</button>
+                            <button onClick={handleConfirmDelete} className="flex-1 rounded-xl py-3 font-bold text-white shadow-lg shadow-red-200 bg-red-600 hover:bg-red-700 transition">{confirmButtonText}</button>
                         </div>
                     </div>
                 </div>
@@ -147,54 +213,21 @@ export function Clinics() {
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden flex flex-col">
                         <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
-                            <div>
-                                <h2 className="text-xl font-bold text-slate-900">Cadastrar Clínica</h2>
-                                <p className="text-sm text-slate-500">Adicione um parceiro manualmente.</p>
-                            </div>
-                            <button onClick={() => setShowModal(false)} className="rounded-full p-2 hover:bg-slate-200 text-slate-400 transition">
-                                <X className="h-5 w-5" />
-                            </button>
+                            <div><h2 className="text-xl font-bold text-slate-900">Cadastrar Clínica</h2><p className="text-sm text-slate-500">Adicione um parceiro manualmente.</p></div>
+                            <button onClick={() => setShowModal(false)} className="rounded-full p-2 hover:bg-slate-200 text-slate-400 transition"><X className="h-5 w-5" /></button>
                         </div>
-
                         <form onSubmit={handleAddClinica} className="p-6 space-y-4">
                             <div>
                                 <label className="mb-1.5 block text-xs font-bold text-slate-500 uppercase">Nome da Clínica *</label>
-                                <div className="relative">
-                                    <Building2 className="absolute top-3 left-3 h-4 w-4 text-slate-400" />
-                                    <input required type="text" value={nome} onChange={e => setNome(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:bg-white" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
-                                </div>
+                                <div className="relative"><Building2 className="absolute top-3 left-3 h-4 w-4 text-slate-400" /><input required type="text" value={nome} onChange={e => setNome(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:bg-white" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} /></div>
                             </div>
                             <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="mb-1.5 block text-xs font-bold text-slate-500 uppercase">Email</label>
-                                    <div className="relative">
-                                        <Mail className="absolute top-3 left-3 h-4 w-4 text-slate-400" />
-                                        <input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:bg-white" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="mb-1.5 block text-xs font-bold text-slate-500 uppercase">Telefone</label>
-                                    <div className="relative">
-                                        <Phone className="absolute top-3 left-3 h-4 w-4 text-slate-400" />
-                                        <input type="text" value={telefone} onChange={e => setTelefone(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:bg-white" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
-                                    </div>
-                                </div>
+                                <div><label className="mb-1.5 block text-xs font-bold text-slate-500 uppercase">Email</label><div className="relative"><Mail className="absolute top-3 left-3 h-4 w-4 text-slate-400" /><input type="email" value={email} onChange={e => setEmail(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:bg-white" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} /></div></div>
+                                <div><label className="mb-1.5 block text-xs font-bold text-slate-500 uppercase">Telefone</label><div className="relative"><Phone className="absolute top-3 left-3 h-4 w-4 text-slate-400" /><input type="text" value={telefone} onChange={e => setTelefone(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:bg-white" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} /></div></div>
                             </div>
                             <div className="grid grid-cols-3 gap-4">
-                                <div className="col-span-1">
-                                    <label className="mb-1.5 block text-xs font-bold text-slate-500 uppercase">NIF</label>
-                                    <div className="relative">
-                                        <FileText className="absolute top-3 left-3 h-4 w-4 text-slate-400" />
-                                        <input type="text" value={nif} onChange={e => setNif(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:bg-white" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
-                                    </div>
-                                </div>
-                                <div className="col-span-2">
-                                    <label className="mb-1.5 block text-xs font-bold text-slate-500 uppercase">Morada</label>
-                                    <div className="relative">
-                                        <MapPin className="absolute top-3 left-3 h-4 w-4 text-slate-400" />
-                                        <input type="text" value={endereco} onChange={e => setEndereco(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:bg-white" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
-                                    </div>
-                                </div>
+                                <div className="col-span-1"><label className="mb-1.5 block text-xs font-bold text-slate-500 uppercase">NIF</label><div className="relative"><FileText className="absolute top-3 left-3 h-4 w-4 text-slate-400" /><input type="text" value={nif} onChange={e => setNif(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:bg-white" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} /></div></div>
+                                <div className="col-span-2"><label className="mb-1.5 block text-xs font-bold text-slate-500 uppercase">Morada</label><div className="relative"><MapPin className="absolute top-3 left-3 h-4 w-4 text-slate-400" /><input type="text" value={endereco} onChange={e => setEndereco(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-slate-50 py-2.5 pl-10 pr-4 text-sm outline-none transition focus:bg-white" onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} /></div></div>
                             </div>
                             <div className="pt-4 mt-4 border-t border-slate-100 flex justify-end gap-3">
                                 <button type="button" onClick={() => setShowModal(false)} className="px-5 py-2.5 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition">Cancelar</button>
@@ -222,7 +255,7 @@ export function Clinics() {
                 </button>
             </div>
 
-            {/* === PESQUISA E LISTA === */}
+            {/* === LISTA === */}
             <div className="space-y-6">
                 <div className="relative max-w-md">
                     <Search className="absolute top-3.5 left-4 h-5 w-5 text-slate-400" />
@@ -236,6 +269,7 @@ export function Clinics() {
                             <th className="px-6 py-4">Clínica</th>
                             <th className="px-6 py-4">Contactos</th>
                             <th className="px-6 py-4 hidden sm:table-cell">Localização / NIF</th>
+                            <th className="px-6 py-4 hidden sm:table-cell">Tabela de Preços</th>
                             <th className="px-6 py-4">Tipo</th>
                             <th className="px-6 py-4 text-right">Ações</th>
                         </tr>
@@ -245,12 +279,8 @@ export function Clinics() {
                             <tr key={c.id} className="hover:bg-slate-50 transition group">
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-3">
-                                        <div className="flex h-10 w-10 items-center justify-center rounded-xl font-bold text-white shadow-sm" style={{ backgroundColor: primaryColor }}>
-                                            {c.nome.substring(0, 2).toUpperCase()}
-                                        </div>
-                                        <div>
-                                            <span className="font-bold text-slate-900 block text-base">{c.nome}</span>
-                                        </div>
+                                        <div className="flex h-10 w-10 items-center justify-center rounded-xl font-bold text-white shadow-sm" style={{ backgroundColor: primaryColor }}>{c.nome.substring(0, 2).toUpperCase()}</div>
+                                        <div><span className="font-bold text-slate-900 block text-base">{c.nome}</span></div>
                                     </div>
                                 </td>
                                 <td className="px-6 py-4 space-y-1">
@@ -262,23 +292,25 @@ export function Clinics() {
                                     <div className="flex items-center gap-2"><FileText className="h-3 w-3 text-slate-400"/> {c.nif || <span className="text-slate-300 italic text-xs">Sem NIF</span>}</div>
                                     <div className="flex items-center gap-2"><MapPin className="h-3 w-3 text-slate-400"/> <span className="truncate max-w-[150px] block">{c.endereco || <span className="text-slate-300 italic text-xs">Sem Morada</span>}</span></div>
                                 </td>
+
+                                {/* COLUNA TABELA */}
+                                <td className="px-6 py-4 hidden sm:table-cell">
+                                    <button
+                                        onClick={() => openTabelaModal(c)}
+                                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition group/tabela"
+                                    >
+                                        <ScrollText className="h-3.5 w-3.5 text-slate-400 group-hover/tabela:text-blue-500" />
+                                        <span className="font-medium text-xs">
+                                            {c.nomeTabela || "Padrão"}
+                                        </span>
+                                    </button>
+                                </td>
+
                                 <td className="px-6 py-4">
-                                    {c.usuarioId ? (
-                                        <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 border border-blue-100 px-2.5 py-1 text-xs font-bold text-blue-700">
-                                            Com Acesso
-                                        </span>
-                                    ) : (
-                                        <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-500">
-                                            Manual
-                                        </span>
-                                    )}
+                                    {c.usuarioId ? <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 border border-blue-100 px-2.5 py-1 text-xs font-bold text-blue-700">Com Acesso</span> : <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 border border-slate-200 px-2.5 py-1 text-xs font-bold text-slate-500">Manual</span>}
                                 </td>
                                 <td className="px-6 py-4 text-right">
-                                    <button
-                                        onClick={() => setDeleteModal({ isOpen: true, clinica: c })}
-                                        className="p-2 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition"
-                                        title={c.usuarioId ? "Encerrar Parceria" : "Apagar Clínica"}
-                                    >
+                                    <button onClick={() => setDeleteModal({ isOpen: true, clinica: c })} className="p-2 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition" title={c.usuarioId ? "Encerrar Parceria" : "Apagar Clínica"}>
                                         {c.usuarioId ? <Unlink className="h-5 w-5" /> : <Trash2 className="h-5 w-5" />}
                                     </button>
                                 </td>
@@ -286,12 +318,6 @@ export function Clinics() {
                         ))}
                         </tbody>
                     </table>
-                    {clinicasFiltradas.length === 0 && (
-                        <div className="p-12 text-center flex flex-col items-center">
-                            <Building2 className="h-12 w-12 text-slate-200 mb-3" />
-                            <p className="text-slate-500 font-medium">Nenhuma clínica encontrada.</p>
-                        </div>
-                    )}
                 </div>
             </div>
         </PageContainer>

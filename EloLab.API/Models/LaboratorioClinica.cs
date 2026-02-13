@@ -4,20 +4,19 @@ using System.Text.Json.Serialization;
 
 namespace EloLab.API.Models;
 
-// 1. Mapear o nome da tabela (igual ao SQL)
 [Table("laboratorio_clinicas")]
 public class LaboratorioClinica
 {
     [Key]
-    [Column("id")] // Mapeia para "id" minúsculo no banco
+    [Column("id")]
     public Guid Id { get; set; } = Guid.NewGuid();
 
     [Required]
-    [Column("laboratorio_id")] // Mapeia para "laboratorio_id"
+    [Column("laboratorio_id")]
     public Guid LaboratorioId { get; set; }
 
     [Required]
-    [Column("clinica_id")] // Mapeia para "clinica_id"
+    [Column("clinica_id")]
     public Guid ClinicaId { get; set; }
 
     [Column("ativo")]
@@ -26,9 +25,11 @@ public class LaboratorioClinica
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
-    // =================================================================
-    // PROPRIEDADES DE NAVEGAÇÃO
-    // =================================================================
+    // === CAMPO DA TABELA DE PREÇOS ===
+    [Column("tabela_preco_id")]
+    public Guid? TabelaPrecoId { get; set; }
+
+    // === PROPRIEDADES DE NAVEGAÇÃO ===
     
     [ForeignKey("LaboratorioId")]
     [JsonIgnore]
@@ -37,4 +38,8 @@ public class LaboratorioClinica
     [ForeignKey("ClinicaId")]
     [JsonIgnore]
     public virtual Clinica? Clinica { get; set; }
+    
+    [ForeignKey("TabelaPrecoId")]
+    [JsonIgnore]
+    public virtual TabelaPreco? TabelaPreco { get; set; }
 }

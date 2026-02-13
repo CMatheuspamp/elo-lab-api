@@ -2,14 +2,14 @@ import { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { PageContainer } from '../components/PageContainer';
-import toast from 'react-hot-toast'; // <--- IMPORT DO TOAST
-import { notify } from '../utils/notify'; // <--- IMPORT DO NOSSO NOTIFY
+import toast from 'react-hot-toast';
+import { notify } from '../utils/notify';
 import {
     ArrowLeft, Save, Loader2, Calendar, User, FileText,
     Building2, Palette, Euro, UploadCloud,
     FileBox, Image as ImageIcon, Trash2, File as FileIcon, Smile, Calculator, Search, X
 } from 'lucide-react';
-import type { UserSession, Servico } from '../types';
+import type { UserSession } from '../types';
 
 // === DADOS ESTRUTURADOS PARA O ODONTOGRAMA ===
 const TEETH_Q1 = ['18', '17', '16', '15', '14', '13', '12', '11'];
@@ -37,7 +37,8 @@ export function NewJob() {
     const preSelectedLabColor = location.state?.preSelectedLabColor;
     const preSelectedServiceId = location.state?.preSelectedServiceId;
 
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(false); // Estado de loading geral (submit)
+    const [loadingServices, setLoadingServices] = useState(false); // Novo: Loading apenas dos serviços
     const [user, setUser] = useState<UserSession | null>(null);
 
     // Cor Dinâmica
@@ -45,7 +46,7 @@ export function NewJob() {
         preSelectedLabColor || localStorage.getItem('elolab_user_color') || '#2563EB'
     );
 
-    const [listaServicos, setListaServicos] = useState<Servico[]>([]);
+    const [listaServicos, setListaServicos] = useState<any[]>([]);
     const [listaParceiros, setListaParceiros] = useState<any[]>([]);
 
     // Estados do Formulário
@@ -93,25 +94,46 @@ export function NewJob() {
         }
     }, [parceiroSelecionadoId, listaParceiros]);
 
-    // 2. Carregar Serviços quando Parceiro muda
+    // 2. LÓGICA DE CARREGAMENTO DE SERVIÇOS (CORRIGIDA E UNIFICADA)
     useEffect(() => {
         if (!user) return;
 
-        if (!isLab && parceiroSelecionadoId) {
-            if (!preSelectedServiceId && listaServicos.length === 0) {
-                setListaServicos([]);
-                setServicoId('');
-                setBuscaServico('');
-                setValorUnitario('');
-            }
-
-            api.get(`/Servicos/laboratorio/${parceiroSelecionadoId}`)
-                .then(res => {
-                    setListaServicos(res.data);
-                })
-                .catch(err => console.error("Erro ao carregar serviços:", err));
+        // Se não houver parceiro selecionado, limpar a lista (a menos que seja modo pré-selecionado)
+        if (!parceiroSelecionadoId) {
+            if (!preSelectedServiceId) setListaServicos([]);
+            return;
         }
-    }, [parceiroSelecionadoId, user, isLab]);
+
+        const isClinica = user.tipo === 'Clinica';
+        const isLaboratorio = user.tipo === 'Laboratorio';
+        let url = '';
+
+        if (isLaboratorio) {
+            // CENÁRIO A (Lab): Ver tabela da clínica X (backend usa meu token de lab)
+            url = `/Servicos/por-clinica/${parceiroSelecionadoId}`;
+        } else if (isClinica) {
+            // CENÁRIO B (Clínica): Ver MINHA tabela com o laboratório Y
+            url = `/Servicos/por-clinica/${user.meusDados.id}?laboratorioId=${parceiroSelecionadoId}`;
+        }
+
+        setLoadingServices(true);
+
+        // Limpa campos dependentes se mudou de parceiro
+        if (!preSelectedServiceId && listaServicos.length > 0) {
+            setServicoId('');
+            setBuscaServico('');
+            setValorUnitario('');
+        }
+
+        api.get(url)
+            .then(res => setListaServicos(res.data))
+            .catch(err => {
+                console.error("Erro ao carregar serviços:", err);
+                setListaServicos([]);
+            })
+            .finally(() => setLoadingServices(false));
+
+    }, [parceiroSelecionadoId, user]);
 
     // 3. Sincronizar Nome do Serviço se já vier selecionado ou mudar
     useEffect(() => {
@@ -124,7 +146,7 @@ export function NewJob() {
         }
     }, [servicoId, listaServicos]);
 
-    // Lógica de Dentes (Mantida)
+    // Lógica de Dentes
     useEffect(() => {
         if (dentesSelecionados.length === 0) {
             setDentesString('');
@@ -183,8 +205,11 @@ export function NewJob() {
             setUser(resUser.data);
             const isUsuarioLab = resUser.data.tipo === 'Laboratorio';
 
+            // IMPORTANTE: Começa com lista de serviços vazia para AMBOS
+            // A lista só será preenchida quando selecionar o parceiro
+            setListaServicos([]);
+
             if (isUsuarioLab) {
-                api.get('/Servicos').then(res => setListaServicos(res.data));
                 const res = await api.get('/Clinicas');
                 setListaParceiros(res.data);
             } else {
@@ -207,7 +232,7 @@ export function NewJob() {
         setValorUnitario('');
     }
 
-    function selecionarServico(s: Servico) {
+    function selecionarServico(s: any) {
         setServicoId(s.id);
         setBuscaServico(s.nome);
         setValorUnitario(s.precoBase.toString());
@@ -281,7 +306,6 @@ export function NewJob() {
             const trabalhoId = response.data.id;
 
             if (arquivos.length > 0 && trabalhoId) {
-                // === NOVO: Mostra toast de carregamento ao enviar arquivos pesados ===
                 toast.loading("A enviar anexos...", { id: "upload-toast" });
                 for (const arquivo of arquivos) {
                     const formData = new FormData();
@@ -291,7 +315,6 @@ export function NewJob() {
                 toast.dismiss("upload-toast");
             }
 
-            // === NOVO: Usa a nossa notificação bonita ===
             notify.success('Pedido criado com sucesso!');
 
             if (!isLab && preSelectedLabId) navigate(`/portal/${preSelectedLabId}`);
@@ -299,8 +322,7 @@ export function NewJob() {
             else navigate('/dashboard');
 
         } catch (error) {
-            toast.dismiss("upload-toast"); // Limpa o toast de carregamento se falhar
-            // O interceptor do api.ts mostrará o erro automaticamente
+            toast.dismiss("upload-toast");
         } finally {
             setLoading(false);
         }
@@ -379,7 +401,6 @@ export function NewJob() {
                                         style={{ borderColor: `${dynamicPrimaryColor}40`, backgroundColor: `${dynamicPrimaryColor}08`, color: dynamicPrimaryColor }}
                                     />
 
-                                    {/* Botão para limpar se não estiver bloqueado */}
                                     {!isPreSelectedMode && buscaParceiro && (
                                         <button
                                             type="button"
@@ -390,7 +411,6 @@ export function NewJob() {
                                         </button>
                                     )}
 
-                                    {/* DROPDOWN DE SUGESTÕES DE PARCEIRO */}
                                     {mostrarListaParceiros && !isPreSelectedMode && (
                                         <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl max-h-60 overflow-y-auto">
                                             {parceirosFiltrados.length === 0 ? (
@@ -432,9 +452,12 @@ export function NewJob() {
                                             onFocus={(e) => { setMostrarListaServicos(true); e.target.style.borderColor = dynamicPrimaryColor; }}
                                             onBlur={(e) => { setTimeout(() => setMostrarListaServicos(false), 200); e.target.style.borderColor = '#e2e8f0'; }}
                                             disabled={!parceiroSelecionadoId && !isLab}
-                                            placeholder="Digite para buscar o serviço..."
+                                            placeholder={loadingServices ? "A carregar serviços..." : "Digite para buscar o serviço..."}
                                             className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-10 text-sm font-medium outline-none transition disabled:opacity-50"
                                         />
+
+                                        {/* Loading Indicator no Input */}
+                                        {loadingServices && <Loader2 className="absolute right-3 top-3 h-5 w-5 animate-spin text-slate-400" />}
 
                                         {/* Dropdown de Serviços */}
                                         {mostrarListaServicos && (
@@ -452,7 +475,9 @@ export function NewJob() {
                                                         >
                                                             <div className="flex justify-between items-center">
                                                                 <span className="font-bold text-sm text-slate-700">{s.nome}</span>
-                                                                <span className="text-xs font-bold text-slate-900 bg-slate-100 px-2 py-1 rounded">
+                                                                <span
+                                                                    className={`text-xs font-bold px-2 py-1 rounded ${s.isTabela ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-900'}`}
+                                                                >
                                                                     {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(s.precoBase)}
                                                                 </span>
                                                             </div>

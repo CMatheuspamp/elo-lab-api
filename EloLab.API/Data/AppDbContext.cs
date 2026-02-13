@@ -18,4 +18,6 @@ public class AppDbContext : DbContext
     public DbSet<Mensagem> Mensagens { get; set; }
     public DbSet<Notificacao> Notificacoes { get; set; }
     public DbSet<Anexo> Anexos { get; set; }
+    public DbSet<TabelaPreco> TabelasPrecos { get; set; }
+    public DbSet<TabelaItem> TabelaItens { get; set; }
 }

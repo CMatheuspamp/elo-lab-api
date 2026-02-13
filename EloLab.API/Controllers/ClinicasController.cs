@@ -19,57 +19,91 @@ public class ClinicasController : ControllerBase
         _context = context;
     }
 
-    [HttpGet]
-    public async Task<ActionResult<IEnumerable<Clinica>>> GetMinhasClinicas()
-    {
-        var todasClinicas = await _context.Clinicas
-            .OrderBy(c => c.Nome)
-            .ToListAsync();
+    // REMOVIDO: O método 'GetMinhasClinicas' antigo que causava conflito.
+    // Agora o 'GetClinicasDoLaboratorio' abaixo é o único dono do GET /.
 
-        return Ok(todasClinicas);
+    [HttpGet]
+    public async Task<IActionResult> GetClinicasDoLaboratorio()
+    {
+        try 
+        {
+            var labId = User.FindFirst("laboratorioId")?.Value;
+            if (string.IsNullOrEmpty(labId)) return Unauthorized();
+            var labGuid = Guid.Parse(labId);
+
+            var clinicas = await _context.LaboratorioClinicas
+                .Where(lc => lc.LaboratorioId == labGuid && lc.Ativo)
+                .Include(lc => lc.Clinica)
+                .Include(lc => lc.TabelaPreco) // Traz a tabela associada
+                .Select(lc => new 
+                {
+                    Id = lc.Clinica.Id,
+                    Nome = lc.Clinica.Nome,
+                    EmailContato = lc.Clinica.EmailContato,
+                    Telefone = lc.Clinica.Telefone,
+                    Nif = lc.Clinica.Nif,
+                    Endereco = lc.Clinica.Endereco,
+                    UsuarioId = lc.Clinica.UsuarioId,
+                    
+                    // Dados da Tabela de Preços
+                    TabelaPrecoId = lc.TabelaPrecoId,
+                    NomeTabela = lc.TabelaPreco == null ? "Padrão" : lc.TabelaPreco.Nome
+                })
+                .OrderBy(c => c.Nome)
+                .ToListAsync();
+
+            return Ok(clinicas);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ERRO CRÍTICO NO GET CLINICAS: {ex.Message}");
+            if (ex.InnerException != null) Console.WriteLine(ex.InnerException.Message);
+            return StatusCode(500, "Erro interno no servidor.");
+        }
     }
 
     [HttpPost]
     public async Task<IActionResult> CriarClinica([FromBody] CriarClinicaRequest request)
     {
+        // Inicia Transação para garantir integridade
+        using var transaction = await _context.Database.BeginTransactionAsync();
         try 
         {
-            // 1. Validar se o laboratório existe
             var labExiste = await _context.Laboratorios.AnyAsync(l => l.Id == request.LaboratorioId);
             if (!labExiste) return BadRequest("Laboratório não encontrado.");
 
-            // 2. Criar a Clínica
+            // 1. Criar a Clínica
             var novaClinica = new Clinica
             {
-                Id = Guid.NewGuid(), // Geramos o ID aqui para garantir
+                Id = Guid.NewGuid(),
                 Nome = request.Nome,
                 EmailContato = request.Email,
                 Telefone = request.Telefone,
                 Nif = request.Nif,
                 Endereco = request.Endereco,
                 CreatedAt = DateTime.UtcNow,
-                UsuarioId = null // Explicitamente nulo pois é manual
+                UsuarioId = null
             };
 
             _context.Clinicas.Add(novaClinica);
             await _context.SaveChangesAsync(); 
 
-            // 3. Criar o Vínculo (LaboratorioClinica)
+            // 2. Criar o Vínculo
             var novoElo = new LaboratorioClinica
             {
                 Id = Guid.NewGuid(),
                 LaboratorioId = request.LaboratorioId,
                 ClinicaId = novaClinica.Id,
                 Ativo = true,
-                CreatedAt = DateTime.UtcNow
+                CreatedAt = DateTime.UtcNow,
+                TabelaPrecoId = null // Começa com padrão
             };
 
             _context.LaboratorioClinicas.Add(novoElo);
             await _context.SaveChangesAsync();
 
-            // 4. RETORNO BLINDADO (AQUI ESTAVA O ERRO)
-            // Em vez de retornar a entidade complexa, retornamos um objeto simples.
-            // Isso evita qualquer erro de serialização ou ciclo infinito.
+            await transaction.CommitAsync();
+
             return Ok(new { 
                 id = novaClinica.Id, 
                 nome = novaClinica.Nome,
@@ -78,51 +112,30 @@ public class ClinicasController : ControllerBase
         }
         catch (Exception ex)
         {
-            // Se der erro, vai aparecer no seu terminal do backend para sabermos o que foi
-            Console.WriteLine($"ERRO CRÍTICO AO CRIAR CLÍNICA: {ex.Message}");
-            if (ex.InnerException != null) Console.WriteLine($"DETALHE: {ex.InnerException.Message}");
-            
+            await transaction.RollbackAsync();
+            Console.WriteLine($"ERRO AO CRIAR CLÍNICA: {ex.Message}");
             return StatusCode(500, "Erro ao processar o cadastro.");
         }
-    }
-
-    [HttpGet("por-laboratorio/{labId}")]
-    public async Task<IActionResult> GetClinicasDoLaboratorio(Guid labId)
-    {
-        var clinicas = await _context.LaboratorioClinicas
-            .Where(elo => elo.LaboratorioId == labId && elo.Ativo)
-            .Include(elo => elo.Clinica)
-            .Select(elo => elo.Clinica)
-            .ToListAsync();
-
-        return Ok(clinicas);
     }
     
     [HttpPut("me")]
     public async Task<IActionResult> AtualizarMeuPerfil([FromBody] AtualizarPerfilRequest request)
     {
-        // 1. Identificar quem está logado (Agora usando o clinicaId que é muito mais seguro e direto)
         var clinicaIdClaim = User.FindFirst("clinicaId")?.Value;
         if (clinicaIdClaim == null) return Unauthorized();
 
-        // 2. Buscar a Clínica
         var clinica = await _context.Clinicas.FindAsync(Guid.Parse(clinicaIdClaim));
         if (clinica == null) return NotFound("Perfil de clínica não encontrado.");
 
-        // 3. Atualizar Dados (CORRIGIDO: Telefone descomentado)
         clinica.Nome = request.Nome;
         clinica.EmailContato = request.EmailContato;
         clinica.Telefone = request.Telefone; 
         clinica.Nif = request.Nif;
         clinica.Endereco = request.Endereco;
 
-        // 4. Salvar
         await _context.SaveChangesAsync();
-
         return Ok(clinica);
     }
-    
-    // ... outros métodos ...
 
     [HttpDelete("{clinicaId}")]
     public async Task<IActionResult> RemoverClinica(Guid clinicaId)
@@ -134,31 +147,16 @@ public class ClinicasController : ControllerBase
         using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
-            // 1. Tenta achar o vínculo (pode ser null se for lixo antigo)
             var vinculo = await _context.LaboratorioClinicas
                 .FirstOrDefaultAsync(lc => lc.LaboratorioId == labGuid && lc.ClinicaId == clinicaId);
 
-            // 2. Tenta achar a clínica
             var clinica = await _context.Clinicas.FindAsync(clinicaId);
 
-            // Se não existe nem um nem outro, aí sim é 404
-            if (vinculo == null && clinica == null) 
-            {
-                return NotFound("Registo não encontrado.");
-            }
+            if (vinculo == null && clinica == null) return NotFound("Registo não encontrado.");
 
-            // 3. Se o vínculo existe, removemos
-            if (vinculo != null)
-            {
-                _context.LaboratorioClinicas.Remove(vinculo);
-            }
+            if (vinculo != null) _context.LaboratorioClinicas.Remove(vinculo);
 
-            // 4. Se a clínica é MANUAL (UsuarioId == null), removemos a clínica da base de dados
-            // Isso garante que limpamos as "órfãs" mesmo que não tenham vínculo
-            if (clinica != null && clinica.UsuarioId == null)
-            {
-                _context.Clinicas.Remove(clinica);
-            }
+            if (clinica != null && clinica.UsuarioId == null) _context.Clinicas.Remove(clinica);
 
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
@@ -171,5 +169,31 @@ public class ClinicasController : ControllerBase
             Console.WriteLine($"Erro ao remover: {ex.Message}");
             return StatusCode(500, "Erro ao remover clínica.");
         }
+    }
+    
+    [HttpPatch("{clinicaId}/tabela")]
+    public async Task<IActionResult> DefinirTabelaPreco(Guid clinicaId, [FromBody] System.Text.Json.JsonElement payload)
+    {
+        var labId = User.FindFirst("laboratorioId")?.Value;
+        if (string.IsNullOrEmpty(labId)) return Unauthorized();
+        var labGuid = Guid.Parse(labId);
+
+        // Extração segura do JSON
+        Guid? tabelaId = null;
+        if (payload.TryGetProperty("tabelaId", out var elem) && elem.ValueKind == System.Text.Json.JsonValueKind.String)
+        {
+             var str = elem.GetString();
+             if (!string.IsNullOrEmpty(str)) tabelaId = Guid.Parse(str);
+        }
+
+        var vinculo = await _context.LaboratorioClinicas
+            .FirstOrDefaultAsync(lc => lc.LaboratorioId == labGuid && lc.ClinicaId == clinicaId);
+
+        if (vinculo == null) return NotFound("Vínculo não encontrado.");
+
+        vinculo.TabelaPrecoId = tabelaId;
+        await _context.SaveChangesAsync();
+
+        return Ok();
     }
 }
