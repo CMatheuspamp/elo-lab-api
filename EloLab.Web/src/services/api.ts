@@ -4,7 +4,7 @@ import { notify } from '../utils/notify';
 // Lógica Inteligente de URL:
 // 1. Tenta pegar a variável de ambiente (Vercel injeta isso)
 // 2. Se não existir, usa localhost para desenvolvimento
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5036/api';
+const baseURL = 'https://elolab.onrender.com/api;
 
 export const api = axios.create({
     baseURL: baseURL,
