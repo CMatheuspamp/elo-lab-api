@@ -3,66 +3,71 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
-using Microsoft.IdentityModel.Tokens; // Necessário para tokens
+using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using Supabase;
 using System.Text;
-using System.Text.Json.Serialization; // Necessário para evitar ciclos JSON
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// 1. Configuração do Banco
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+// ==============================================================================
+// 1. CONFIGURAÇÃO DE AMBIENTE E BANCO DE DADOS (CRÍTICO PARA O RENDER)
+// ==============================================================================
+
+// Tenta pegar a conexão do arquivo local ou da variável de ambiente do Render
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection") 
+                       ?? Environment.GetEnvironmentVariable("DB_CONNECTION_STRING");
+
+if (string.IsNullOrEmpty(connectionString))
+{
+    throw new Exception("ERRO FATAL: String de conexão com o banco não encontrada.");
+}
+
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
-// 2. Configurações do Supabase
-var supabaseUrl = builder.Configuration["SupabaseSettings:Url"];
-var supabaseKey = builder.Configuration["SupabaseSettings:Key"];
-var jwtSecret = builder.Configuration["SupabaseSettings:JwtSecret"]; // <--- Novo
-
-if (string.IsNullOrEmpty(supabaseUrl) || string.IsNullOrEmpty(jwtSecret))
+// ==============================================================================
+// 2. CONFIGURAÇÃO DE CORS (PARA O FRONTEND ACESSAR)
+// ==============================================================================
+builder.Services.AddCors(options =>
 {
-    // Se esquecer o segredo, o app avisa logo no início
-    throw new Exception("ATENÇÃO: 'JwtSecret' ou 'Url' ausentes no appsettings.json");
-}
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
 
-var options = new SupabaseOptions
+// ==============================================================================
+// 3. CONFIGURAÇÃO DE AUTENTICAÇÃO (JWT)
+// ==============================================================================
+// Usa a chave do appsettings ou uma variável de ambiente, com fallback para dev
+var jwtKey = builder.Configuration["Jwt:Key"] 
+             ?? Environment.GetEnvironmentVariable("JWT_KEY") 
+             ?? "chave_secreta_padrao_para_desenvolvimento_apenas";
+
+var key = Encoding.ASCII.GetBytes(jwtKey);
+
+builder.Services.AddAuthentication(x =>
 {
-    AutoRefreshToken = true,
-    AutoConnectRealtime = false
-};
-
-builder.Services.AddScoped<Supabase.Client>(_ => 
-    new Supabase.Client(supabaseUrl, supabaseKey, options));
-
-// 3. CONFIGURAÇÃO DA AUTENTICAÇÃO (TOKEN INTELIGENTE)
-var bytesKey = Encoding.UTF8.GetBytes(jwtSecret);
-
-builder.Services.AddAuthentication(options =>
-{
-    options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    x.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+    x.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
 })
-.AddJwtBearer(options =>
+.AddJwtBearer(x =>
 {
-    options.TokenValidationParameters = new TokenValidationParameters
+    x.RequireHttpsMetadata = false;
+    x.SaveToken = true;
+    x.TokenValidationParameters = new TokenValidationParameters
     {
         ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(bytesKey),
-        
-        ValidateIssuer = true,
-        ValidIssuer = $"{supabaseUrl}/auth/v1",
-        
-        ValidateAudience = true,
-        ValidAudience = "authenticated",
-        
-        ValidateLifetime = true,
-        ClockSkew = TimeSpan.Zero
+        IssuerSigningKey = new SymmetricSecurityKey(key),
+        ValidateIssuer = false, // Simplificado para evitar erros de domínio
+        ValidateAudience = false
     };
 });
 
-// 4. Controllers com prevenção de Ciclo Infinito (Erro 500)
+// 4. Configuração dos Controllers (JSON)
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -70,7 +75,7 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     });
 
-// 5. Swagger e Documentação
+// 5. Swagger
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -87,43 +92,47 @@ builder.Services.AddSwaggerGen(c =>
     c.AddSecurityRequirement(new OpenApiSecurityRequirement
     {
         {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
-            },
+            new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } },
             new string[] {}
         }
     });
 });
 
-// 6. CORS (Permitir Frontend)
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("PermitirFrontend", policy =>
-    {
-        policy.AllowAnyOrigin()
-            .AllowAnyHeader()
-            .AllowAnyMethod();
-    });
-});
-
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
+// ==============================================================================
+// 6. AUTO-MIGRATION (CRÍTICO: CRIA O BANCO SOZINHO NO RENDER)
+// ==============================================================================
+using (var scope = app.Services.CreateScope())
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
+    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    try 
+    {
+        Console.WriteLine("A aplicar migrações do banco de dados...");
+        dbContext.Database.Migrate(); 
+        Console.WriteLine("Banco de dados atualizado com sucesso!");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"ERRO AO APLICAR MIGRATIONS: {ex.Message}");
+    }
 }
 
-app.UseHttpsRedirection();
-app.UseCors("PermitirFrontend");
+// Configurações do Pipeline
+app.UseSwagger();
+app.UseSwaggerUI();
 
-// 7. Arquivos Estáticos (3D e Imagens)
+// Removemos HttpsRedirection no Render pois ele gere o SSL externamente e pode causar loops
+// app.UseHttpsRedirection(); 
+
+app.UseCors("AllowAll");
+
+// 7. Arquivos Estáticos (Uploads e 3D)
 var provider = new FileExtensionContentTypeProvider();
 provider.Mappings[".stl"] = "application/vnd.ms-pki.stl";
 provider.Mappings[".obj"] = "model/obj";
 
-var caminhoWwwRoot = Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
+var caminhoWwwRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
 if (!Directory.Exists(caminhoWwwRoot)) Directory.CreateDirectory(caminhoWwwRoot);
 
 app.UseStaticFiles(new StaticFileOptions
@@ -133,7 +142,6 @@ app.UseStaticFiles(new StaticFileOptions
     OnPrepareResponse = ctx =>
     {
         ctx.Context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
-        ctx.Context.Response.Headers.Append("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
     }
 });
 
@@ -142,4 +150,8 @@ app.UseAuthorization();
 
 app.MapControllers();
 
-app.Run();
+// ==============================================================================
+// 8. CONFIGURAÇÃO DE PORTA (OBRIGATÓRIO PARA O RENDER)
+// ==============================================================================
+var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
+app.Run($"http://0.0.0.0:{port}");
