@@ -12,6 +12,7 @@ import { Clinics } from './pages/Clinics';
 import { Notifications } from './pages/Notifications';
 import { PriceTables } from './pages/PriceTables';
 import { Register } from './pages/Register';
+import { Landing } from './pages/Landing';
 import { Toaster } from 'react-hot-toast';
 
 function App() {
@@ -26,7 +27,7 @@ function App() {
             />
             <Routes>
                 {/* === Rotas Públicas === */}
-                <Route path="/" element={<Login />} />
+                <Route path="/" element={<Landing />} />
                 <Route path="/login" element={<Login />} />
 
                 {/* As nossas novas rotas de registo */}
