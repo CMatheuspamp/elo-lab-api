@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using EloLab.API.Data;
 using EloLab.API.Models;
 using EloLab.API.DTOs;
@@ -20,10 +21,38 @@ public class LaboratoriosController : ControllerBase
     }
 
     [HttpGet]
+    [Authorize] // Impede que visitantes anónimos vejam os laboratórios
     public async Task<IActionResult> GetLaboratorios()
     {
-        var labs = await _context.Laboratorios.ToListAsync();
-        return Ok(labs);
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId) || !Guid.TryParse(userId, out var uid))
+            return Unauthorized();
+
+        // 1. Verificar se o utilizador logado é uma Clínica
+        var clinica = await _context.Clinicas.FirstOrDefaultAsync(c => c.UsuarioId == uid);
+        
+        if (clinica != null)
+        {
+            // A MÁGICA: Só devolve os laboratórios que têm um vínculo com esta clínica!
+            var labsParceiros = await _context.LaboratorioClinicas
+                .Where(lc => lc.ClinicaId == clinica.Id)
+                .Join(_context.Laboratorios, // Cruza com a tabela de Laboratórios
+                    vinculo => vinculo.LaboratorioId,
+                    lab => lab.Id,
+                    (vinculo, lab) => lab)
+                .ToListAsync();
+
+            return Ok(labsParceiros);
+        }
+
+        // 2. Se for um Laboratório a fazer o pedido, devolvemos apenas os dados dele próprio
+        var laboratorio = await _context.Laboratorios.FirstOrDefaultAsync(l => l.UsuarioId == uid);
+        if (laboratorio != null)
+        {
+            return Ok(new List<Laboratorio> { laboratorio });
+        }
+
+        return BadRequest(new { mensagem = "Perfil não identificado." });
     }
 
     [HttpPost]

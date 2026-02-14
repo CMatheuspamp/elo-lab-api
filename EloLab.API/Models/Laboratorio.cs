@@ -47,4 +47,9 @@ public class Laboratorio
 
     [Column("endereco")]
     public string? Endereco { get; set; }
+    [Column("status_assinatura")]
+    public string StatusAssinatura { get; set; } = "Pendente";
+
+    [Column("stripe_customer_id")]
+    public string? StripeCustomerId { get; set; }
 }

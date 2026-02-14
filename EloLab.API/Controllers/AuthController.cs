@@ -1,10 +1,16 @@
+using System;
+using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using System.Threading.Tasks;
 using EloLab.API.Data;
 using EloLab.API.DTOs;
+using EloLab.API.Models; // Necessário para encontrar as classes Usuario e Laboratorio
+using Microsoft.AspNetCore.Authorization; // Necessário para o [AllowAnonymous] e [Authorize]
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
 
 namespace EloLab.API.Controllers;
@@ -25,6 +31,7 @@ public class AuthController : ControllerBase
     }
 
     [HttpPost("login")]
+    [AllowAnonymous]
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         try
@@ -40,7 +47,7 @@ public class AuthController : ControllerBase
 
             // 2. Descobrir QUEM é este usuário
             string tipo = "Desconhecido";
-            string nome = session.User.Email;
+            string nome = session.User.Email ?? "Sem Nome";
             Guid? laboratorioId = null;
             Guid? clinicaId = null;
             
@@ -82,6 +89,9 @@ public class AuthController : ControllerBase
             if (clinicaId != null) claims.Add(new Claim("clinicaId", clinicaId.ToString()));
 
             var jwtSecret = _configuration["SupabaseSettings:JwtSecret"];
+            if (string.IsNullOrEmpty(jwtSecret))
+                return StatusCode(500, new { erro = "Configuração do JWT ausente." });
+
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
@@ -106,7 +116,6 @@ public class AuthController : ControllerBase
                 email = session.User.Email,
                 tipo = tipo,
                 nome = nome,
-                // NOVOS CAMPOS PARA O FRONTEND
                 corPrimaria = cor,
                 logoUrl = logo
             });
@@ -114,12 +123,12 @@ public class AuthController : ControllerBase
         catch (Exception ex)
         {
             Console.WriteLine($"Erro Login: {ex.Message}");
-            return BadRequest(new { erro = "Falha no login." });
+            return BadRequest(new { erro = "Falha no login. Verifique suas credenciais." });
         }
     }
     
     [HttpGet("me")]
-    [Microsoft.AspNetCore.Authorization.Authorize] 
+    [Authorize] 
     public async Task<IActionResult> GetMe()
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -135,5 +144,235 @@ public class AuthController : ControllerBase
             return Ok(new { id = clinica.Id, tipo = "Clinica", meusDados = clinica });
 
         return Ok(new { Tipo = "Desconhecido", Mensagem = "Sem perfil." });
+    }
+    
+    [HttpPost("register/laboratorio")]
+    [AllowAnonymous]
+    // NOTA: Se o teu arquivo ainda se chamar RegistroLaboratorioDto, adiciona o "Dto" aqui no parâmetro
+    public async Task<IActionResult> RegisterLaboratorio([FromBody] RegistroLaboratorioDto request)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        // 1. Criar a conta de autenticação no Supabase Auth
+        Supabase.Gotrue.Session session;
+        try
+        {
+            session = await _supabaseClient.Auth.SignUp(request.Email, request.Senha);
+        }
+        catch (Exception ex)
+        {
+            return BadRequest(new { mensagem = $"Erro ao criar conta no Supabase: {ex.Message}" });
+        }
+
+        if (session == null || session.User == null)
+            return BadRequest(new { mensagem = "Não foi possível criar a conta. Este email já pode estar em uso." });
+
+        if (!Guid.TryParse(session.User.Id, out var supabaseUserId))
+            return BadRequest(new { mensagem = "ID de usuário inválido gerado pelo Supabase." });
+
+        // 2. Salvar os dados na tabela Laboratorios
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        
+        try
+        {
+            // === MÁGICA DO SLUG CORRIGIDA ===
+            // Pega o nome, converte para minúsculas e troca espaços por traços
+            string nomeLimpo = request.NomeLaboratorio ?? "lab";
+            string baseSlug = nomeLimpo.ToLower().Replace(" ", "-");
+            
+            // Remove qualquer caractere que não seja letra, número ou traço
+            baseSlug = System.Text.RegularExpressions.Regex.Replace(baseSlug, @"[^a-z0-9\-]", "");
+            
+            // Adiciona 6 caracteres únicos no fim para garantir que nunca há duplicados no banco
+            string slugUnico = $"{baseSlug}-{Guid.NewGuid().ToString().Substring(0, 6)}";
+            // ==================================
+
+            var novoLaboratorio = new Laboratorio
+            {
+                Id = Guid.NewGuid(),
+                UsuarioId = supabaseUserId,
+                Nome = request.NomeLaboratorio,
+                Slug = slugUnico, // <--- O Slug vai aqui!
+                EmailContato = request.Email,
+                Nif = request.Nif,
+                Telefone = request.Telefone,
+                CorPrimaria = "#2563EB", 
+                StatusAssinatura = "Pendente",
+                Ativo = true,
+                CreatedAt = DateTime.UtcNow
+            };
+            
+            _context.Laboratorios.Add(novoLaboratorio);
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return StatusCode(201, new { mensagem = "Laboratório registado com sucesso." });
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            Console.WriteLine($"Erro ao gravar Laboratorio no BD: {ex.InnerException?.Message ?? ex.Message}");
+            return StatusCode(500, new { mensagem = "Erro interno ao gravar os dados do laboratório." });
+        }
+    }
+    
+    [HttpPost("convite/gerar")]
+    [Authorize] // Só labs logados podem gerar convites
+    public async Task<IActionResult> GerarConviteEndpoint([FromBody] GerarConvite request)
+    {
+        // 1. Descobrir qual é o Laboratório que está a fazer o pedido
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId) || !Guid.TryParse(userId, out var uid))
+            return Unauthorized(new { mensagem = "Usuário não autenticado." });
+
+        var lab = await _context.Laboratorios.FirstOrDefaultAsync(l => l.UsuarioId == uid);
+        if (lab == null)
+            return Forbid(); // Se não for laboratório, não pode gerar convite
+
+        // 2. Criar o convite no banco
+        var novoConvite = new ConviteClinica
+        {
+            Id = Guid.NewGuid(),
+            LaboratorioId = lab.Id,
+            EmailConvidado = request.EmailConvidado,
+            DataCriacao = DateTime.UtcNow,
+            DataExpiracao = DateTime.UtcNow.AddDays(7), // Expira em 7 dias
+            Usado = false
+        };
+
+        _context.ConvitesClinicas.Add(novoConvite);
+        await _context.SaveChangesAsync();
+
+        // 3. Devolver o link pronto para o Frontend usar
+        // Dica: Substitua 'localhost:5173' pela variável de ambiente do Frontend no futuro
+        var linkFrontend = $"http://localhost:5173/registro-clinica?token={novoConvite.Id}";
+
+        return Ok(new 
+        { 
+            mensagem = "Convite gerado com sucesso.", 
+            token = novoConvite.Id,
+            link = linkFrontend
+        });
+    }
+    
+    [HttpPost("register/clinica")]
+    [AllowAnonymous]
+    public async Task<IActionResult> RegisterClinica([FromBody] RegistroClinica request)
+    {
+        if (!ModelState.IsValid) return BadRequest(ModelState);
+
+        // 1. Se veio um Token, vamos VALIDAR antes de criar a conta
+        ConviteClinica? convite = null;
+        if (request.TokenConvite.HasValue)
+        {
+            convite = await _context.ConvitesClinicas
+                .FirstOrDefaultAsync(c => c.Id == request.TokenConvite.Value && !c.Usado && c.DataExpiracao > DateTime.UtcNow);
+                
+            if (convite == null)
+                return BadRequest(new { mensagem = "Convite inválido, expirado ou já utilizado." });
+        }
+
+        // 2. Criar conta no Supabase Auth
+        Supabase.Gotrue.Session session;
+        try { session = await _supabaseClient.Auth.SignUp(request.Email, request.Senha); }
+        catch (Exception ex) { return BadRequest(new { mensagem = $"Erro no Auth: {ex.Message}" }); }
+
+        if (session == null || session.User == null)
+            return BadRequest(new { mensagem = "Não foi possível criar a conta. Email já em uso?" });
+
+        if (!Guid.TryParse(session.User.Id, out var supabaseUserId))
+            return BadRequest(new { mensagem = "Erro de ID." });
+
+        // 3. Gravar no Banco de Dados (Transação)
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            // Cria a Clínica
+            var novaClinica = new Clinica
+            {
+                Id = Guid.NewGuid(),
+                UsuarioId = supabaseUserId,
+                Nome = request.NomeClinica,
+                EmailContato = request.Email,
+                Nif = request.Nif,
+                Telefone = request.Telefone,
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.Clinicas.Add(novaClinica);
+
+            // 4. A MÁGICA: Se tinha convite válido, cria o Vínculo!
+            if (convite != null)
+            {
+                var novoVinculo = new LaboratorioClinica
+                {
+                    Id = Guid.NewGuid(),
+                    LaboratorioId = convite.LaboratorioId,
+                    ClinicaId = novaClinica.Id
+                };
+                _context.LaboratorioClinicas.Add(novoVinculo);
+
+                // Queimar o convite para não ser usado de novo
+                convite.Usado = true;
+                _context.ConvitesClinicas.Update(convite);
+            }
+
+            await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            return StatusCode(201, new { mensagem = "Clínica registada com sucesso." });
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            Console.WriteLine($"Erro ao gravar Clinica: {ex.InnerException?.Message ?? ex.Message}");
+            return StatusCode(500, new { mensagem = "Erro ao gravar a clínica no banco." });
+        }
+    }
+    
+    [HttpPost("convite/aceitar/{token}")]
+    [Authorize] // A clínica tem de estar logada!
+    public async Task<IActionResult> AceitarConvite(Guid token)
+    {
+        var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId) || !Guid.TryParse(userId, out var uid))
+            return Unauthorized();
+
+        // 1. Descobrir se o usuário logado é realmente uma clínica
+        var clinica = await _context.Clinicas.FirstOrDefaultAsync(c => c.UsuarioId == uid);
+        if (clinica == null)
+            return BadRequest(new { mensagem = "Apenas clínicas podem aceitar este convite." });
+
+        // 2. Validar o Convite
+        var convite = await _context.ConvitesClinicas
+            .FirstOrDefaultAsync(c => c.Id == token && !c.Usado && c.DataExpiracao > DateTime.UtcNow);
+
+        if (convite == null)
+            return BadRequest(new { mensagem = "Convite inválido, expirado ou já utilizado." });
+
+        // 3. Verificar se o vínculo JÁ EXISTE (para não duplicar)
+        var vinculoExiste = await _context.LaboratorioClinicas
+            .AnyAsync(lc => lc.LaboratorioId == convite.LaboratorioId && lc.ClinicaId == clinica.Id);
+
+        if (vinculoExiste)
+            return BadRequest(new { mensagem = "Você já está vinculado a este laboratório." });
+
+        // 4. Criar o Vínculo e queimar o convite
+        var novoVinculo = new LaboratorioClinica
+        {
+            Id = Guid.NewGuid(),
+            LaboratorioId = convite.LaboratorioId,
+            ClinicaId = clinica.Id
+        };
+
+        _context.LaboratorioClinicas.Add(novoVinculo);
+        
+        convite.Usado = true;
+        _context.ConvitesClinicas.Update(convite);
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { mensagem = "Vínculo criado com sucesso! Agora você faz parte deste laboratório." });
     }
 }

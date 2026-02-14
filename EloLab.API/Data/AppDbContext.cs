@@ -21,4 +21,5 @@ public class AppDbContext : DbContext
     public DbSet<Anexo> Anexos { get; set; }
     public DbSet<TabelaPreco> TabelasPrecos { get; set; }
     public DbSet<TabelaItem> TabelaItens { get; set; }
+    public DbSet<ConviteClinica> ConvitesClinicas { get; set; }
 }

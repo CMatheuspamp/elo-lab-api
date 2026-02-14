@@ -11,6 +11,7 @@ import { Layout } from './components/Layout';
 import { Clinics } from './pages/Clinics';
 import { Notifications } from './pages/Notifications';
 import { PriceTables } from './pages/PriceTables';
+import { Register } from './pages/Register';
 import { Toaster } from 'react-hot-toast';
 
 function App() {
@@ -24,11 +25,17 @@ function App() {
                 }}
             />
             <Routes>
-                {/* Rotas Públicas */}
+                {/* === Rotas Públicas === */}
                 <Route path="/" element={<Login />} />
+                <Route path="/login" element={<Login />} />
+
+                {/* As nossas novas rotas de registo */}
+                <Route path="/registro" element={<Register />} />
+                <Route path="/registro-clinica" element={<Register />} />
+
                 <Route path="/print/job/:id" element={<PrintJob />} />
 
-                {/* Rotas com Sidebar */}
+                {/* === Rotas Privadas (Com Sidebar/Layout) === */}
                 <Route element={<Layout />}>
                     {/* Dashboard Geral (Lab) */}
                     <Route path="/dashboard" element={<Dashboard />} />
@@ -46,6 +53,7 @@ function App() {
                     <Route path="/perfil" element={<Profile />} />
                 </Route>
 
+                {/* Rota de fallback (Se não encontrar nada, volta ao início) */}
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Routes>
         </BrowserRouter>

@@ -4,7 +4,7 @@ import { PageContainer } from '../components/PageContainer';
 import { notify } from '../utils/notify';
 import {
     Building2, Plus, Search, Mail, Phone,
-    MapPin, FileText, Loader2, X, Save, Trash2, Unlink, AlertTriangle, ScrollText
+    MapPin, FileText, Loader2, X, Save, Trash2, Unlink, AlertTriangle, ScrollText, Link
 } from 'lucide-react';
 import type { UserSession } from '../types';
 
@@ -13,6 +13,7 @@ export function Clinics() {
 
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [generatingInvite, setGeneratingInvite] = useState(false);
     const [user, setUser] = useState<UserSession | null>(null);
 
     // Dados
@@ -59,6 +60,23 @@ export function Clinics() {
             console.error(error);
         } finally {
             setLoading(false);
+        }
+    }
+
+    // === AÇÃO DE GERAR CONVITE ===
+    async function handleGenerateInvite() {
+        setGeneratingInvite(true);
+        try {
+            const response = await api.post('/Auth/convite/gerar', {});
+            const linkConvite = response.data.link;
+
+            await navigator.clipboard.writeText(linkConvite);
+            notify.success('Link mágico copiado! Pode colar e enviar para a clínica.');
+        } catch (error) {
+            console.error("Erro ao gerar convite:", error);
+            notify.error('Não foi possível gerar o link de convite.');
+        } finally {
+            setGeneratingInvite(false);
         }
     }
 
@@ -246,13 +264,23 @@ export function Clinics() {
                     <h1 className="text-3xl font-bold text-slate-900">Minhas Clínicas</h1>
                     <p className="text-slate-500">Faça a gestão dos seus parceiros e adicione clínicas manuais.</p>
                 </div>
-                <button
-                    onClick={() => setShowModal(true)}
-                    className="flex items-center gap-2 rounded-xl px-6 py-3 font-bold text-white shadow-lg transition hover:-translate-y-0.5 w-fit"
-                    style={{ backgroundColor: primaryColor, boxShadow: `0 4px 14px ${primaryColor}40` }}
-                >
-                    <Plus className="h-5 w-5" /> Adicionar Clínica
-                </button>
+                <div className="flex flex-col sm:flex-row gap-3">
+                    <button
+                        onClick={handleGenerateInvite}
+                        disabled={generatingInvite}
+                        className="flex items-center justify-center gap-2 rounded-xl border-2 border-slate-200 bg-white px-5 py-3 font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:opacity-50 w-fit"
+                    >
+                        {generatingInvite ? <Loader2 className="h-5 w-5 animate-spin" /> : <Link className="h-5 w-5 text-slate-400" />}
+                        Copiar Link de Convite
+                    </button>
+                    <button
+                        onClick={() => setShowModal(true)}
+                        className="flex items-center justify-center gap-2 rounded-xl px-6 py-3 font-bold text-white shadow-lg transition hover:-translate-y-0.5 w-fit"
+                        style={{ backgroundColor: primaryColor, boxShadow: `0 4px 14px ${primaryColor}40` }}
+                    >
+                        <Plus className="h-5 w-5" /> Adicionar Manual
+                    </button>
+                </div>
             </div>
 
             {/* === LISTA === */}
