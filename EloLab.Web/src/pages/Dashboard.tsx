@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { notify } from '../utils/notify';
 import {
     TrendingUp, AlertCircle, Clock, CheckCircle,
-    Filter, Search, Plus, Calendar, ArrowRight, Trash2, ArrowLeft, BookOpen, X, Info
+    Filter, Search, Plus, Calendar, ArrowRight, Trash2, ArrowLeft, BookOpen, X, Info, Building2
 } from 'lucide-react';
 import type { UserSession, Trabalho } from '../types';
 import { PageContainer } from '../components/PageContainer';
@@ -30,7 +30,11 @@ export function Dashboard() {
 
     const [trabalhoParaExcluir, setTrabalhoParaExcluir] = useState<string | null>(null);
 
-    const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('pt-BR');
+    const formatDate = (dateString: string) => {
+        if (!dateString) return '-';
+        return new Date(dateString).toLocaleDateString('pt-BR');
+    };
+
     const formatCurrency = (value: number) => new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(value);
 
     const getFullUrl = (url: string) => {
@@ -47,14 +51,13 @@ export function Dashboard() {
         if (s.includes('concluido') || s.includes('finalizado') || s.includes('entregue')) return false;
 
         const hoje = new Date();
-        hoje.setHours(0, 0, 0, 0); // Zera as horas para comparar só o dia
+        hoje.setHours(0, 0, 0, 0);
         const entrega = new Date(t.dataEntregaPrevista);
         entrega.setHours(0, 0, 0, 0);
 
         return entrega < hoje;
     };
 
-    // Computa o status efetivo (Se estiver atrasado, o status real é ofuscado)
     const getEffectiveStatus = (t: Trabalho) => {
         if (isAtrasado(t)) return 'Atrasado';
         return t.status;
@@ -140,9 +143,13 @@ export function Dashboard() {
     const displaySubtitle = isClinica ? 'Portal do Parceiro' : 'Ambiente de Gestão & Produção';
     const labelNovos = isClinica ? 'Pendentes' : 'Novos Pedidos';
 
-    // Aplicação dos Filtros (Agora usando o Status Efetivo para a pesquisa)
     const trabalhosFiltrados = trabalhos.filter(t => {
-        const textoMatch = t.pacienteNome.toLowerCase().includes(busca.toLowerCase()) || t.id.toLowerCase().includes(busca.toLowerCase()) || (t.servico?.nome || '').toLowerCase().includes(busca.toLowerCase());
+        const clinicaNome = t.clinica?.nome || '';
+        const textoMatch = t.pacienteNome.toLowerCase().includes(busca.toLowerCase()) ||
+            t.id.toLowerCase().includes(busca.toLowerCase()) ||
+            (t.servico?.nome || '').toLowerCase().includes(busca.toLowerCase()) ||
+            clinicaNome.toLowerCase().includes(busca.toLowerCase()); // Permite pesquisar pelo nome da clínica!
+
         const effective = getEffectiveStatus(t);
         const statusMatch = filtroStatus === 'Todos' || effective === filtroStatus;
         const clinicaMatch = clinicaSelecionadaId === 'Todos' || t.clinicaId === clinicaSelecionadaId;
@@ -154,7 +161,6 @@ export function Dashboard() {
         return textoMatch && statusMatch && clinicaMatch && dataMatch;
     });
 
-    // Contagem para os Cards
     const pendentes = trabalhosFiltrados.filter(t => getEffectiveStatus(t) === 'Pendente').length;
     const emProducao = trabalhosFiltrados.filter(t => getEffectiveStatus(t) === 'EmProducao').length;
     const concluidos = trabalhosFiltrados.filter(t => getEffectiveStatus(t) === 'Concluido').length;
@@ -163,7 +169,7 @@ export function Dashboard() {
     return (
         <PageContainer primaryColor={primaryColor}>
 
-            {/* === MODALS (Exclusão e Catálogo) Omitidos por brevidade visual, mas presentes no código === */}
+            {/* === MODALS OMITIDOS (MANTÊM-SE IGUAIS) === */}
             {trabalhoParaExcluir && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">
@@ -195,11 +201,7 @@ export function Dashboard() {
                         <div className="flex-1 overflow-y-auto p-6 lg:p-8">
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                                 {catalogoServicos.map(s => (
-                                    <div
-                                        key={s.id}
-                                        onClick={() => setServicoDetalhe(s)}
-                                        className="group cursor-pointer bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden flex flex-col"
-                                    >
+                                    <div key={s.id} onClick={() => setServicoDetalhe(s)} className="group cursor-pointer bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-xl hover:-translate-y-1 transition-all duration-300 overflow-hidden flex flex-col">
                                         <div className="h-48 w-full bg-slate-100 overflow-hidden relative">
                                             {s.fotoUrl ? (
                                                 <img src={getFullUrl(s.fotoUrl)} className="h-full w-full object-cover transition duration-700 group-hover:scale-105" alt={s.nome} />
@@ -221,9 +223,7 @@ export function Dashboard() {
                                                 <Clock className="h-3 w-3" /> {s.prazoDiasUteis} dias úteis
                                             </div>
                                             <div className="mt-auto flex items-center justify-between border-t border-slate-50 pt-4">
-                                                <span className={`text-xl font-black ${s.isTabela ? 'text-emerald-600' : 'text-slate-900'}`}>
-                                                    {formatCurrency(s.precoBase)}
-                                                </span>
+                                                <span className={`text-xl font-black ${s.isTabela ? 'text-emerald-600' : 'text-slate-900'}`}>{formatCurrency(s.precoBase)}</span>
                                                 {s.isTabela ? (
                                                     <span className="text-xs font-bold text-emerald-600 uppercase tracking-wide bg-emerald-50 px-2 py-1 rounded-lg">Preço VIP</span>
                                                 ) : (
@@ -264,13 +264,7 @@ export function Dashboard() {
                                         onClick={() => {
                                             setServicoDetalhe(null);
                                             setShowCatalogue(false);
-                                            navigate('/trabalhos/novo', {
-                                                state: {
-                                                    preSelectedLabId: labId,
-                                                    preSelectedLabColor: primaryColor,
-                                                    preSelectedServiceId: servicoDetalhe.id
-                                                }
-                                            });
+                                            navigate('/trabalhos/novo', { state: { preSelectedLabId: labId, preSelectedLabColor: primaryColor, preSelectedServiceId: servicoDetalhe.id } });
                                         }}
                                         className="mt-auto w-full py-4 rounded-xl font-bold text-white shadow-lg hover:opacity-90 transition text-center"
                                         style={{ backgroundColor: primaryColor }}
@@ -339,9 +333,8 @@ export function Dashboard() {
                     </div>
                 </div>
 
-                {/* === OS 4 CARDS REORDENADOS === */}
+                {/* === CARDS DE RESUMO === */}
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                    {/* 1. Pendentes */}
                     <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between group hover:border-amber-200 transition">
                         <div>
                             <p className="text-xs font-bold uppercase text-slate-400">{labelNovos}</p>
@@ -349,7 +342,6 @@ export function Dashboard() {
                         </div>
                         <Clock className="h-8 w-8 text-amber-400" />
                     </div>
-                    {/* 2. Em Produção */}
                     <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between group hover:border-blue-200 transition">
                         <div>
                             <p className="text-xs font-bold uppercase text-slate-400">Em Produção</p>
@@ -357,7 +349,6 @@ export function Dashboard() {
                         </div>
                         <TrendingUp className="h-8 w-8 text-blue-500" />
                     </div>
-                    {/* 3. Concluídos */}
                     <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between group hover:border-emerald-200 transition">
                         <div>
                             <p className="text-xs font-bold uppercase text-slate-400">Concluídos</p>
@@ -365,7 +356,6 @@ export function Dashboard() {
                         </div>
                         <CheckCircle className="h-8 w-8 text-emerald-500" />
                     </div>
-                    {/* 4. Em Atraso (Novo Card Vermelho) */}
                     <div className="relative overflow-hidden rounded-2xl bg-white p-6 shadow-sm border border-red-100 group hover:border-red-300 transition hover:shadow-md">
                         <div className="flex items-center justify-between relative z-10">
                             <div>
@@ -380,7 +370,7 @@ export function Dashboard() {
                     </div>
                 </div>
 
-                {/* FILTROS E LISTA */}
+                {/* === FILTROS E LISTA === */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                     <div className="mb-6 flex items-center justify-between">
                         <h3 className="flex items-center gap-2 text-sm font-bold text-slate-700">
@@ -393,7 +383,7 @@ export function Dashboard() {
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
                         <div className="lg:col-span-2 relative">
                             <Search className="absolute top-3 left-3 h-4 w-4 text-slate-400" />
-                            <input type="text" value={busca} onChange={e => setBusca(e.target.value)} className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none transition" placeholder="Buscar por paciente ou serviço..." onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
+                            <input type="text" value={busca} onChange={e => setBusca(e.target.value)} className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none transition" placeholder="Buscar por paciente, serviço ou clínica..." onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
                         </div>
                         <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none font-medium text-slate-700">
                             <option value="Todos">Status: Todos</option>
@@ -418,33 +408,54 @@ export function Dashboard() {
                         <tr>
                             <th className="px-6 py-4">Paciente</th>
                             <th className="px-6 py-4">Serviço</th>
-                            <th className="px-6 py-4">Data Prevista</th>
+                            <th className="px-6 py-4">Entrada</th>
+                            <th className="px-6 py-4">Entrega</th>
                             <th className="px-6 py-4">Status</th>
                             <th className="px-6 py-4 text-right">Ações</th>
                         </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                         {trabalhosFiltrados.map((trabalho) => {
-                            // Envia o objecto inteiro para ele saber se está atrasado!
                             const statusInfo = getStatusInfo(trabalho);
                             return (
                                 <tr key={trabalho.id} className="hover:bg-slate-50 transition cursor-pointer group" onClick={() => navigate(`/trabalhos/${trabalho.id}`)}>
                                     <td className="px-6 py-4">
-                                        <span className="font-bold text-slate-900 block">{trabalho.pacienteNome}</span>
-                                        <span className="text-xs text-slate-400 font-mono">#{trabalho.id.substring(0, 8)}</span>
+                                        {/* === NOME DO PACIENTE COM CLÍNICA POR BAIXO === */}
+                                        <span className="font-bold text-slate-900 block text-base leading-tight">{trabalho.pacienteNome}</span>
+                                        <div className="flex items-center gap-2 mt-1">
+                                            {!isClinica && (
+                                                <span className="text-xs text-slate-500 font-medium flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200/60">
+                                                    <Building2 className="h-3 w-3" />
+                                                    {trabalho.clinica?.nome || 'Clínica não def.'}
+                                                </span>
+                                            )}
+                                            <span className="text-[10px] text-slate-400 font-mono">#{trabalho.id.substring(0, 8)}</span>
+                                        </div>
                                     </td>
+
                                     <td className="px-6 py-4 font-medium">{trabalho.servico?.nome || 'Personalizado'}</td>
+
+                                    {/* === NOVA COLUNA: ENTRADA === */}
+                                    <td className="px-6 py-4">
+                                        <span className="text-sm text-slate-500 font-medium">
+                                            {formatDate(trabalho.createdAt)}
+                                        </span>
+                                    </td>
+
+                                    {/* === COLUNA DE ENTREGA (Mantém a lógica do vermelho em caso de atraso) === */}
                                     <td className="px-6 py-4">
                                         <div className={`flex items-center gap-2 font-bold ${isAtrasado(trabalho) ? 'text-red-600' : 'text-slate-600'}`}>
                                             <Calendar className={`h-4 w-4 ${isAtrasado(trabalho) ? 'text-red-500' : 'text-slate-400'}`}/>
                                             {formatDate(trabalho.dataEntregaPrevista)}
                                         </div>
                                     </td>
+
                                     <td className="px-6 py-4">
                                         <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${statusInfo.color}`}>
                                             <statusInfo.icon className="h-3.5 w-3.5" /> {statusInfo.label}
                                         </span>
                                     </td>
+
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
                                             {!isClinica && (
