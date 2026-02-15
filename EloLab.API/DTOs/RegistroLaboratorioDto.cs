@@ -21,5 +21,9 @@ namespace EloLab.API.DTOs // Confirme se a sua pasta se chama DTOs
         // Campos que o lab pode preencher agora ou deixar para depois
         public string? Nif { get; set; }
         public string? Telefone { get; set; }
+        
+        public string? Rua { get; set; }
+        public string? Cidade { get; set; }
+        public string? CodigoPostal { get; set; }
     }
 }

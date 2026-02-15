@@ -15,11 +15,15 @@ import { Register } from './pages/Register';
 import { Landing } from './pages/Landing';
 import { Agenda } from './pages/Agenda';
 import { Financeiro } from './pages/Financeiro';
+import { ForgotPassword } from './pages/ForgotPassword';
+import { ResetPassword } from './pages/ResetPassword';
+import { AuthListener } from './components/AuthListener';
 import { Toaster } from 'react-hot-toast';
 
 function App() {
     return (
         <BrowserRouter>
+            <AuthListener />
             <Toaster
                 position="top-right"
                 toastOptions={{
@@ -31,6 +35,8 @@ function App() {
                 {/* === Rotas Públicas === */}
                 <Route path="/" element={<Landing />} />
                 <Route path="/login" element={<Login />} />
+                <Route path="/esqueci-senha" element={<ForgotPassword />} />
+                <Route path="/redefinir-senha" element={<ResetPassword />} />
 
                 {/* As nossas novas rotas de registo */}
                 <Route path="/registro" element={<Register />} />

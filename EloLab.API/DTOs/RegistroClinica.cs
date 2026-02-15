@@ -20,6 +20,10 @@ namespace EloLab.API.DTOs
 
         public string? Nif { get; set; }
         public string? Telefone { get; set; }
+        
+        public string? Rua { get; set; }
+        public string? Cidade { get; set; }
+        public string? CodigoPostal { get; set; }
 
         // A MÁGICA ESTÁ AQUI: O token do convite (opcional)
         public Guid? TokenConvite { get; set; } 

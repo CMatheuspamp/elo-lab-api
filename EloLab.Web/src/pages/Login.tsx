@@ -138,7 +138,9 @@ export function Login() {
                                     <label className="block text-sm font-bold text-slate-700">
                                         Senha
                                     </label>
-                                    <a href="#" className="text-sm font-bold text-blue-600 hover:text-blue-700 hover:underline">Esqueceu a senha?</a>
+                                    <Link to="/esqueci-senha" className="text-sm font-bold text-blue-600 hover:text-blue-700 hover:underline">
+                                        Esqueceu a senha?
+                                    </Link>
                                 </div>
                                 <div className="relative group">
                                     <Lock className="absolute top-3.5 left-3.5 h-5 w-5 text-slate-400 transition-colors group-focus-within:text-blue-600" />

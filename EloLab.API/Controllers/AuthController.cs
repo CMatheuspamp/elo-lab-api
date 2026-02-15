@@ -197,6 +197,9 @@ public class AuthController : ControllerBase
                 EmailContato = request.Email,
                 Nif = request.Nif,
                 Telefone = request.Telefone,
+                Rua = request.Rua,                 // ADICIONAR ESTA LINHA
+                Cidade = request.Cidade,           // ADICIONAR ESTA LINHA
+                CodigoPostal = request.CodigoPostal,
                 CorPrimaria = "#2563EB", 
                 StatusAssinatura = "Pendente",
                 Ativo = true,
@@ -298,6 +301,9 @@ public class AuthController : ControllerBase
                 EmailContato = request.Email,
                 Nif = request.Nif,
                 Telefone = request.Telefone,
+                Rua = request.Rua,                 // ADICIONAR ESTA LINHA
+                Cidade = request.Cidade,           // ADICIONAR ESTA LINHA
+                CodigoPostal = request.CodigoPostal,
                 CreatedAt = DateTime.UtcNow
             };
             _context.Clinicas.Add(novaClinica);
@@ -374,5 +380,27 @@ public class AuthController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok(new { mensagem = "Vínculo criado com sucesso! Agora você faz parte deste laboratório." });
+    }
+    
+    [HttpPost("recuperar-senha")]
+    [AllowAnonymous]
+    public async Task<IActionResult> RecuperarSenha([FromBody] string email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            return BadRequest(new { mensagem = "O e-mail é obrigatório." });
+
+        try
+        {
+            // Pede ao Supabase Auth para enviar o e-mail de recuperação
+            await _supabaseClient.Auth.ResetPasswordForEmail(email);
+
+            return Ok(new { mensagem = "Se o e-mail existir no nosso sistema, receberá um link de recuperação em breve." });
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Erro ao pedir recuperação de senha: {ex.Message}");
+            // Devolvemos sempre OK para não permitir que hackers descubram quais e-mails estão registados
+            return Ok(new { mensagem = "Se o e-mail existir no nosso sistema, receberá um link de recuperação em breve." });
+        }
     }
 }

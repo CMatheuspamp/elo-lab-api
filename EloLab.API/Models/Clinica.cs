@@ -17,6 +17,15 @@ public class Clinica
     // === NOVO CAMPO (O ÚNICO QUE FALTAVA) ===
     [Column("telefone")]
     public string? Telefone { get; set; }
+    
+    [Column("rua")]
+    public string? Rua { get; set; }
+
+    [Column("cidade")]
+    public string? Cidade { get; set; }
+
+    [Column("codigo_postal")]
+    public string? CodigoPostal { get; set; }
     // ========================================
 
     [Column("nif")]
