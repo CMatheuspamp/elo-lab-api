@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react'; // <--- Importei useEffect e useState
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
     LayoutDashboard, PlusCircle, Building2,
-    Tag, UserCircle, LogOut, Users, Bell, ScrollText, CalendarDays
+    Tag, UserCircle, LogOut, Users, Bell, ScrollText, CalendarDays, Wallet
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -104,13 +104,21 @@ export function Sidebar() {
             path: '/tabelas',
             show: userType === 'Laboratorio'
         },
+        // === 7. FINANCEIRO (Só Lab) ===
+        {
+            label: 'Financeiro',
+            icon: Wallet,
+            path: '/financeiro',
+            show: userType === 'Laboratorio'
+        },
+        // 6. Agenda (Só Lab)
         {
             label: 'Agenda',
             icon: CalendarDays,
             path: '/agenda',
-            show: userType === 'Laboratorio' // Mostra apenas para o Laboratório
+            show: userType === 'Laboratorio'
         },
-        // === 6. NOTIFICAÇÕES (COM BADGE) ===
+        // === 8. NOTIFICAÇÕES (COM BADGE) ===
         {
             label: 'Notificações',
             icon: Bell,
@@ -118,7 +126,7 @@ export function Sidebar() {
             show: true,
             hasBadge: true // <--- Marcador para renderizar a bolinha
         },
-        // 7. Perfil (Para todos)
+        // 9. Perfil (Para todos)
         {
             label: 'Meu Perfil',
             icon: UserCircle,

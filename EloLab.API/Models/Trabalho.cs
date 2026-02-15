@@ -50,6 +50,9 @@ public class Trabalho
 
     [Column("valor_final")]
     public decimal ValorFinal { get; set; }
+    
+    [Column("pago")]
+    public bool Pago { get; set; } = false;
 
     [Column("status")]
     public string Status { get; set; } = "Pendente";

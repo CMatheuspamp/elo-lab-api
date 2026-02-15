@@ -271,4 +271,29 @@ public class TrabalhosController : ControllerBase
             return StatusCode(500, new { erro = "Erro interno ao excluir", detalhe = ex.Message });
         }
     }
+    
+    [HttpPatch("{id}/pagamento")]
+    [Authorize]
+    public async Task<IActionResult> AtualizarPagamento(Guid id, [FromBody] AtualizarPagamentoRequest request)
+    {
+        // Garante que é o dono do laboratório a fazer a alteração
+        var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(userIdStr, out var userId)) return Unauthorized();
+
+        var trabalho = await _context.Trabalhos
+            .Include(t => t.Laboratorio)
+            .FirstOrDefaultAsync(t => t.Id == id);
+
+        if (trabalho == null) 
+            return NotFound(new { mensagem = "Trabalho não encontrado." });
+
+        if (trabalho.Laboratorio.UsuarioId != userId) 
+            return Forbid();
+
+        // Atualiza o estado de pagamento real na Base de Dados
+        trabalho.Pago = request.Pago;
+        await _context.SaveChangesAsync();
+
+        return Ok(new { mensagem = "Status financeiro atualizado com sucesso.", pago = trabalho.Pago });
+    }
 }

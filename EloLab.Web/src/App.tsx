@@ -14,6 +14,7 @@ import { PriceTables } from './pages/PriceTables';
 import { Register } from './pages/Register';
 import { Landing } from './pages/Landing';
 import { Agenda } from './pages/Agenda';
+import { Financeiro } from './pages/Financeiro';
 import { Toaster } from 'react-hot-toast';
 
 function App() {
@@ -52,6 +53,10 @@ function App() {
                     <Route path="/servicos" element={<Services />} />
                     <Route path="/tabelas" element={<PriceTables />} />
                     <Route path="/agenda" element={<Agenda />} />
+
+                    {/* === NOVA ROTA DO FINANCEIRO === */}
+                    <Route path="/financeiro" element={<Financeiro />} />
+
                     <Route path="/notificacoes" element={<Notifications />} />
                     <Route path="/perfil" element={<Profile />} />
                 </Route>
