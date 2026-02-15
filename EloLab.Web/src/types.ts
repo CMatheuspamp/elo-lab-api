@@ -61,6 +61,7 @@ export interface Trabalho {
     arquivoUrl?: string;
 
     createdAt: string;
+    pago: boolean;
 }
 
 export interface UserSession {

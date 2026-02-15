@@ -4,7 +4,7 @@ import { PageContainer } from '../components/PageContainer';
 import { notify } from '../utils/notify';
 import {
     Euro, TrendingUp, AlertCircle, CheckCircle2,
-    Filter, Search, Calendar, Building2, Receipt,
+    Filter, Search, Calendar, Building2,
     DownloadCloud, Loader2, Wallet, Clock
 } from 'lucide-react';
 
@@ -137,6 +137,61 @@ export function Financeiro() {
         setDataFim(ultimoDia);
     }
 
+    // === EXPORTAR PARA EXCEL (CSV) ===
+    function exportToCSV() {
+        if (trabalhosFiltrados.length === 0) {
+            notify.error("Não há dados para exportar com os filtros atuais.");
+            return;
+        }
+
+        // 1. Cabeçalhos das colunas
+        const headers = ['ID Pedido', 'Paciente', 'Clinica', 'Servico', 'Data Entrega', 'Valor', 'Status', 'Pago'];
+
+        const clean = (str: string | number) => `"${String(str).replace(/"/g, '""')}"`;
+
+        // 2. Mapear os dados filtrados para o formato CSV
+        const csvRows = trabalhosFiltrados.map(t => {
+            const data = t.dataEntregaPrevista ? new Date(t.dataEntregaPrevista).toLocaleDateString('pt-PT') : '';
+            const pago = isPago(t) ? 'Sim' : 'Não';
+            const status = getStatusFinanceiro(t).label;
+            const clinica = t.clinica?.nome || 'Sem Clinica';
+            const servico = t.servico?.nome || 'Personalizado';
+            const valor = t.valorFinal ? t.valorFinal.toString().replace('.', ',') : '0,00';
+
+            return [
+                clean(t.id.substring(0, 8)),
+                clean(t.pacienteNome),
+                clean(clinica),
+                clean(servico),
+                clean(data),
+                clean(valor),
+                clean(status),
+                clean(pago)
+            ].join(';');
+        });
+
+        // Resumo no final do CSV
+        csvRows.push(['', '', '', '', '', '', '', ''].join(';'));
+        csvRows.push(['', '', '', '', clean('TOTAL FATURADO:'), clean(totalFaturado.toFixed(2).replace('.', ',')), '', ''].join(';'));
+        csvRows.push(['', '', '', '', clean('TOTAL RECEBIDO:'), clean(totalRecebido.toFixed(2).replace('.', ',')), '', ''].join(';'));
+        csvRows.push(['', '', '', '', clean('A RECEBER:'), clean(totalAReceber.toFixed(2).replace('.', ',')), '', ''].join(';'));
+
+        const csvContent = headers.join(';') + '\n' + csvRows.join('\n');
+        const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+
+        const nomeFicheiro = `Faturamento_EloLab_${new Date().toISOString().split('T')[0]}.csv`;
+
+        link.setAttribute('href', url);
+        link.setAttribute('download', nomeFicheiro);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        notify.success("Relatório exportado com sucesso!");
+    }
+
     if (loading) return <div className="flex h-screen items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-slate-400" /></div>;
 
     return (
@@ -152,7 +207,10 @@ export function Financeiro() {
                     </h1>
                     <p className="text-slate-500 mt-1 font-medium">Controle o seu faturamento, cobranças e pagamentos reais.</p>
                 </div>
-                <button className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 shadow-lg shadow-slate-900/20 transition">
+                <button
+                    onClick={exportToCSV}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white font-bold rounded-xl hover:bg-slate-800 shadow-lg shadow-slate-900/20 transition"
+                >
                     <DownloadCloud className="h-4 w-4" /> Exportar Relatório
                 </button>
             </div>
@@ -283,10 +341,6 @@ export function Financeiro() {
                                 </td>
                                 <td className="px-6 py-4 text-right">
                                     <div className="flex items-center justify-end gap-2">
-                                        <button className="rounded-xl p-2.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 border border-transparent hover:border-blue-200 transition shadow-sm" title="Gerar Recibo / Fatura">
-                                            <Receipt className="h-4 w-4" />
-                                        </button>
-
                                         {!pago ? (
                                             <button
                                                 onClick={() => alternarPagamento(t.id, pago)}
@@ -310,6 +364,35 @@ export function Financeiro() {
                         );
                     })}
                     </tbody>
+
+                    {/* === RESUMO NA PRÓPRIA TABELA HTML === */}
+                    {trabalhosFiltrados.length > 0 && (
+                        <tfoot className="bg-slate-50/80 border-t-2 border-slate-200">
+                        <tr>
+                            <td colSpan={3} className="px-6 py-6 text-right font-black text-slate-500 uppercase tracking-widest text-xs">
+                                Resumo do Período Filtrado:
+                            </td>
+                            <td className="px-6 py-6 text-right">
+                                <div className="flex flex-col">
+                                    <span className="text-[10px] font-bold text-slate-400 uppercase">Faturado</span>
+                                    <span className="text-lg font-black text-slate-900">{formatCurrency(totalFaturado)}</span>
+                                </div>
+                            </td>
+                            <td className="px-6 py-6 text-center">
+                                <div className="flex flex-col items-center">
+                                    <span className="text-[10px] font-bold text-emerald-500 uppercase">Recebido</span>
+                                    <span className="text-lg font-black text-emerald-600">{formatCurrency(totalRecebido)}</span>
+                                </div>
+                            </td>
+                            <td className="px-6 py-6 text-right">
+                                <div className="flex flex-col items-end">
+                                    <span className="text-[10px] font-bold text-amber-500 uppercase">A Receber</span>
+                                    <span className="text-lg font-black text-amber-600">{formatCurrency(totalAReceber)}</span>
+                                </div>
+                            </td>
+                        </tr>
+                        </tfoot>
+                    )}
                 </table>
                 {trabalhosFiltrados.length === 0 && (
                     <div className="p-16 flex flex-col items-center justify-center text-slate-400">
