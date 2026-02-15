@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
-using Supabase; // <--- Importante
+using Supabase; 
 using System.Text;
 using System.Text.Json.Serialization;
 
@@ -19,7 +19,6 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 
 if (string.IsNullOrEmpty(connectionString))
 {
-    // Fallback para desenvolvimento local se não achar nada
     throw new Exception("String de conexão não encontrada. Configure DB_CONNECTION_STRING.");
 }
 
@@ -27,9 +26,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));
 
 // ==============================================================================
-// 2. CONFIGURAÇÃO DO SUPABASE CLIENT (SDK) - O QUE FALTVAVA
+// 2. CONFIGURAÇÃO DO SUPABASE CLIENT (SDK)
 // ==============================================================================
-// Tenta pegar do Render (Env Vars) ou do appsettings.json (Local)
 var supabaseUrl = Environment.GetEnvironmentVariable("SUPABASE_URL") 
                   ?? builder.Configuration["SupabaseSettings:Url"];
 
@@ -38,7 +36,6 @@ var supabaseKey = Environment.GetEnvironmentVariable("SUPABASE_KEY")
 
 if (string.IsNullOrEmpty(supabaseUrl) || string.IsNullOrEmpty(supabaseKey))
 {
-    // Não crashamos aqui para não derrubar o deploy, mas o login vai falhar se isso for nulo
     Console.WriteLine("AVISO: Configurações do Supabase (URL/Key) não encontradas!");
 }
 else 
@@ -49,7 +46,6 @@ else
         AutoConnectRealtime = false
     };
 
-    // Injeta o Cliente Supabase para o AuthController usar
     builder.Services.AddScoped<Supabase.Client>(_ => 
         new Supabase.Client(supabaseUrl, supabaseKey, options));
 }
@@ -59,7 +55,7 @@ else
 // ==============================================================================
 var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY") 
              ?? builder.Configuration["Jwt:Key"]
-             ?? builder.Configuration["SupabaseSettings:JwtSecret"] // Tenta pegar o segredo do Supabase também
+             ?? builder.Configuration["SupabaseSettings:JwtSecret"] 
              ?? "chave_secreta_fallback_apenas_para_dev";
 
 var key = Encoding.ASCII.GetBytes(jwtKey);
@@ -82,12 +78,21 @@ builder.Services.AddAuthentication(x =>
     };
 });
 
-// 4. CORS
+// ==============================================================================
+// 4. CORS (BLINDAGEM DE PRODUÇÃO)
+// ==============================================================================
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("ProducaoSegura", policy =>
     {
-        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+        // Só permite pedidos do site oficial e do teu PC local
+        policy.WithOrigins(
+            "https://elolabsystems.com", 
+            "https://www.elolabsystems.com", 
+            "http://localhost:5173"
+        )
+        .AllowAnyMethod()
+        .AllowAnyHeader();
     });
 });
 
@@ -127,17 +132,17 @@ using (var scope = app.Services.CreateScope())
 
 app.UseSwagger();
 app.UseSwaggerUI();
-app.UseCors("AllowAll");
+
+// APLICA A REGRA DE SEGURANÇA QUE CRIÁMOS ACIMA
+app.UseCors("ProducaoSegura");
 
 // ==============================================================================
 // 8. ARQUIVOS ESTÁTICOS (UPLOADS E STL)
 // ==============================================================================
 var provider = new FileExtensionContentTypeProvider();
-// O formato octet-stream é o mais seguro para garantir que navegadores processam modelos 3D
 provider.Mappings[".stl"] = "application/octet-stream"; 
 provider.Mappings[".obj"] = "application/octet-stream"; 
 
-// 8.1 Mantém a pasta wwwroot (caso uses no futuro)
 var caminhoWwwRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
 if (!Directory.Exists(caminhoWwwRoot)) Directory.CreateDirectory(caminhoWwwRoot);
 app.UseStaticFiles(new StaticFileOptions 
@@ -146,14 +151,12 @@ app.UseStaticFiles(new StaticFileOptions
     ContentTypeProvider = provider 
 });
 
-// 8.2 A MÁGICA DOS UPLOADS ACONTECE AQUI:
-// Diz ao C# que a pasta física "uploads" responde pela URL "/uploads"
 var caminhoUploads = Path.Combine(app.Environment.ContentRootPath, "uploads");
 if (!Directory.Exists(caminhoUploads)) Directory.CreateDirectory(caminhoUploads);
 app.UseStaticFiles(new StaticFileOptions 
 { 
     FileProvider = new PhysicalFileProvider(caminhoUploads), 
-    RequestPath = "/uploads", // <-- Liga a pasta à Rota correta que o React está a pedir!
+    RequestPath = "/uploads", 
     ContentTypeProvider = provider 
 });
 // ==============================================================================
