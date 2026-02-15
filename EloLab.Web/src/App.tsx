@@ -18,6 +18,7 @@ import { Financeiro } from './pages/Financeiro';
 import { ForgotPassword } from './pages/ForgotPassword';
 import { ResetPassword } from './pages/ResetPassword';
 import { AuthListener } from './components/AuthListener';
+import { PendingApproval } from "./pages/PendingApproval.tsx";
 import { Toaster } from 'react-hot-toast';
 
 function App() {
@@ -35,6 +36,7 @@ function App() {
                 {/* === Rotas Públicas === */}
                 <Route path="/" element={<Landing />} />
                 <Route path="/login" element={<Login />} />
+                <Route path="/pendente" element={<PendingApproval />} />
                 <Route path="/esqueci-senha" element={<ForgotPassword />} />
                 <Route path="/redefinir-senha" element={<ResetPassword />} />
 

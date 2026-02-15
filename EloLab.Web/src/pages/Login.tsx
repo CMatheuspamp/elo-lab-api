@@ -16,10 +16,15 @@ export function Login() {
 
         try {
             const response = await api.post('/Auth/login', { email, password });
-            const { token, tipo, corPrimaria, logoUrl } = response.data;
 
+            // 1. Extrai os dados da resposta
+            const { token, usuarioId, tipo, nome, corPrimaria, logoUrl } = response.data;
+
+            // 2. Guarda na memória do navegador
             localStorage.setItem('elolab_token', token);
+            localStorage.setItem('elolab_user_id', usuarioId); // Adicionado por precaução
             localStorage.setItem('elolab_user_type', tipo);
+            localStorage.setItem('elolab_user_name', nome);    // Adicionado por precaução
             localStorage.setItem('elolab_user_color', corPrimaria || '#2563EB');
 
             if (logoUrl) {
@@ -28,8 +33,10 @@ export function Login() {
                 localStorage.removeItem('elolab_user_logo');
             }
 
+            // 3. Define o Token no Axios para os próximos pedidos
             api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
+            // 4. Lógica de Convite da Clínica
             const tokenConvite = localStorage.getItem('elolab_token_convite');
             if (tokenConvite && tipo === 'Clinica') {
                 try {
@@ -42,14 +49,30 @@ export function Login() {
                 }
             }
 
+            // 5. Redirecionamento de Sucesso
             if (tipo === 'Clinica') {
                 navigate('/parceiros');
-            } else {
+            } else if (tipo === 'Laboratorio') {
                 navigate('/dashboard');
+            } else {
+                navigate('/');
             }
 
-        } catch (error) {
-            notify.error('Falha na autenticação. Verifique as suas credenciais.');
+            notify.success(`Bem-vindo de volta!`);
+
+        } catch (error: any) {
+            // === BLOQUEIO DE SEGURANÇA MÁXIMA PARA PRODUÇÃO ===
+            // Se o Backend mandar o Erro 403 com o texto "PENDENTE", 
+            // significa que o Laboratório não está ativo.
+            if (error.response?.status === 403 && error.response?.data?.erro === 'PENDENTE') {
+                navigate('/pendente');
+                return;
+            }
+            // ===================================================
+
+            console.error(error);
+            // Mensagem de erro genérica (ou enviada pela API) para outros casos
+            notify.error(error.response?.data?.erro || error.response?.data?.mensagem || 'Falha na autenticação. Verifique as suas credenciais.');
         } finally {
             setLoading(false);
         }

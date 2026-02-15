@@ -129,12 +129,34 @@ app.UseSwagger();
 app.UseSwaggerUI();
 app.UseCors("AllowAll");
 
-// 8. Arquivos Estáticos
+// ==============================================================================
+// 8. ARQUIVOS ESTÁTICOS (UPLOADS E STL)
+// ==============================================================================
 var provider = new FileExtensionContentTypeProvider();
-provider.Mappings[".stl"] = "application/vnd.ms-pki.stl";
+// O formato octet-stream é o mais seguro para garantir que navegadores processam modelos 3D
+provider.Mappings[".stl"] = "application/octet-stream"; 
+provider.Mappings[".obj"] = "application/octet-stream"; 
+
+// 8.1 Mantém a pasta wwwroot (caso uses no futuro)
 var caminhoWwwRoot = Path.Combine(app.Environment.ContentRootPath, "wwwroot");
 if (!Directory.Exists(caminhoWwwRoot)) Directory.CreateDirectory(caminhoWwwRoot);
-app.UseStaticFiles(new StaticFileOptions { FileProvider = new PhysicalFileProvider(caminhoWwwRoot), ContentTypeProvider = provider });
+app.UseStaticFiles(new StaticFileOptions 
+{ 
+    FileProvider = new PhysicalFileProvider(caminhoWwwRoot), 
+    ContentTypeProvider = provider 
+});
+
+// 8.2 A MÁGICA DOS UPLOADS ACONTECE AQUI:
+// Diz ao C# que a pasta física "uploads" responde pela URL "/uploads"
+var caminhoUploads = Path.Combine(app.Environment.ContentRootPath, "uploads");
+if (!Directory.Exists(caminhoUploads)) Directory.CreateDirectory(caminhoUploads);
+app.UseStaticFiles(new StaticFileOptions 
+{ 
+    FileProvider = new PhysicalFileProvider(caminhoUploads), 
+    RequestPath = "/uploads", // <-- Liga a pasta à Rota correta que o React está a pedir!
+    ContentTypeProvider = provider 
+});
+// ==============================================================================
 
 app.UseAuthentication();
 app.UseAuthorization();

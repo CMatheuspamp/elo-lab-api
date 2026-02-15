@@ -69,6 +69,10 @@ namespace EloLab.API.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<bool>("Ativo")
+                        .HasColumnType("boolean")
+                        .HasColumnName("ativo");
+
                     b.Property<string>("Cidade")
                         .HasColumnType("text")
                         .HasColumnName("cidade");

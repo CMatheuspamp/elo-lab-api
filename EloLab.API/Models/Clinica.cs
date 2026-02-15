@@ -33,6 +33,9 @@ public class Clinica
 
     [Column("endereco")]
     public string? Endereco { get; set; }
+    
+    [Column("ativo")]
+    public bool Ativo { get; set; } = true; // Clínicas têm via verde imediata
 
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

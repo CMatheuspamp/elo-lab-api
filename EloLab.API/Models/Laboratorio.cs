@@ -27,7 +27,7 @@ public class Laboratorio
     // =================
 
     [Column("ativo")]
-    public bool Ativo { get; set; } = true;
+    public bool Ativo { get; set; } = false;
     
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

@@ -50,6 +50,7 @@ public class AuthController : ControllerBase
             string nome = session.User.Email ?? "Sem Nome";
             Guid? laboratorioId = null;
             Guid? clinicaId = null;
+            bool isAtivo = false;
             
             // Variáveis de aparência
             string cor = "#2563EB"; 
@@ -61,6 +62,7 @@ public class AuthController : ControllerBase
                 tipo = "Laboratorio";
                 nome = lab.Nome;
                 laboratorioId = lab.Id;
+                isAtivo = lab.Ativo;
                 
                 // Carrega a aparência do Laboratório
                 cor = lab.CorPrimaria;
@@ -74,7 +76,14 @@ public class AuthController : ControllerBase
                     tipo = "Clinica";
                     nome = clinica.Nome;
                     clinicaId = clinica.Id;
+                    isAtivo = clinica.Ativo;
                 }
+            }
+            
+            if (tipo == "Laboratorio" && !isAtivo)
+            {
+                // O Backend recusa gerar o token e avisa o Frontend do motivo
+                return StatusCode(403, new { erro = "PENDENTE", mensagem = "A conta do laboratório está em análise." });
             }
 
             // 3. Criar Token
@@ -117,7 +126,8 @@ public class AuthController : ControllerBase
                 tipo = tipo,
                 nome = nome,
                 corPrimaria = cor,
-                logoUrl = logo
+                logoUrl = logo,
+                ativo = isAtivo
             });
         }
         catch (Exception ex)
@@ -202,7 +212,7 @@ public class AuthController : ControllerBase
                 CodigoPostal = request.CodigoPostal,
                 CorPrimaria = "#2563EB", 
                 StatusAssinatura = "Pendente",
-                Ativo = true,
+                Ativo = false,
                 CreatedAt = DateTime.UtcNow
             };
             
