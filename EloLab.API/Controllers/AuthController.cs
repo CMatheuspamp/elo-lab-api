@@ -260,7 +260,8 @@ public class AuthController : ControllerBase
 
         // 3. Devolver o link pronto para o Frontend usar
         // Dica: Substitua 'localhost:5173' pela variável de ambiente do Frontend no futuro
-        var linkFrontend = $"http://localhost:5173/registro-clinica?token={novoConvite.Id}";
+        var frontendUrl = _configuration["FrontendUrl"] ?? Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "http://localhost:5173";
+        var linkFrontend = $"{frontendUrl}/registro-clinica?token={novoConvite.Id}";
 
         return Ok(new 
         { 

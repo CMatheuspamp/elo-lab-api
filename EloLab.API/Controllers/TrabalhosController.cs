@@ -21,6 +21,20 @@ public class TrabalhosController : ControllerBase
     }
 
     // =============================================================
+    // HELPER DE SEGURANÇA: Verifica se o utilizador logado é dono deste trabalho
+    // =============================================================
+    private bool TemPermissaoNoTrabalho(Trabalho trabalho)
+    {
+        var labIdClaim = User.FindFirst("laboratorioId")?.Value;
+        var clinicaIdClaim = User.FindFirst("clinicaId")?.Value;
+
+        bool isDonoLab = !string.IsNullOrEmpty(labIdClaim) && trabalho.LaboratorioId.ToString() == labIdClaim;
+        bool isDonoClinica = !string.IsNullOrEmpty(clinicaIdClaim) && trabalho.ClinicaId.ToString() == clinicaIdClaim;
+
+        return isDonoLab || isDonoClinica;
+    }
+
+    // =============================================================
     // 1. LISTAGEM INTELIGENTE (Dashboard)
     // =============================================================
     [HttpGet]
@@ -78,7 +92,6 @@ public class TrabalhosController : ControllerBase
             PacienteNome = request.PacienteNome,
             Dentes = request.Dentes,
             CorDente = request.CorDente,
-            // CORREÇÃO AQUI: Agora lê da propriedade correta do request
             DescricaoPersonalizada = request.DescricaoPersonalizada, 
             DataEntregaPrevista = request.DataEntrega.ToUniversalTime(),
             ValorFinal = valorFinalCalculado,
@@ -89,7 +102,7 @@ public class TrabalhosController : ControllerBase
         _context.Trabalhos.Add(trabalho);
         await _context.SaveChangesAsync();
         
-        // === DISPARAR NOTIFICAÇÃO DE NOVO PEDIDO (Clínica -> Lab) ===
+        // DISPARAR NOTIFICAÇÃO DE NOVO PEDIDO (Clínica -> Lab)
         var tipoUser = User.FindFirst("tipo")?.Value;
         if (tipoUser == "Clinica")
         {
@@ -99,7 +112,7 @@ public class TrabalhosController : ControllerBase
             var novaNotificacao = new Notificacao
             {
                 Id = Guid.NewGuid(),
-                UsuarioId = request.LaboratorioId, // Vai para o dono do Laboratório
+                UsuarioId = request.LaboratorioId,
                 Titulo = "Novo Pedido Recebido 📦",
                 Texto = $"{clinicaNotif?.Nome} enviou um novo trabalho para {request.PacienteNome} ({(servicoNotif?.Nome ?? "Personalizado")}).",
                 LinkAction = $"/trabalhos/{trabalho.Id}",
@@ -127,6 +140,9 @@ public class TrabalhosController : ControllerBase
 
         if (trabalho == null) return NotFound();
 
+        // SEGURANÇA MÁXIMA: Apenas os envolvidos podem ver os detalhes!
+        if (!TemPermissaoNoTrabalho(trabalho)) return Forbid();
+
         return Ok(trabalho);
     }
     
@@ -139,10 +155,14 @@ public class TrabalhosController : ControllerBase
         var trabalho = await _context.Trabalhos.FindAsync(trabalhoId);
         if (trabalho == null) return NotFound("Trabalho não encontrado.");
 
+        // SEGURANÇA MÁXIMA: Apenas o Laboratório dono deste trabalho pode mudar o status
+        var labIdClaim = User.FindFirst("laboratorioId")?.Value;
+        if (trabalho.LaboratorioId.ToString() != labIdClaim) return Forbid();
+
         trabalho.Status = novoStatus;
         await _context.SaveChangesAsync();
         
-        // === DISPARAR NOTIFICAÇÃO DE STATUS (Lab -> Clínica) ===
+        // DISPARAR NOTIFICAÇÃO DE STATUS (Lab -> Clínica)
         var tipoUserStatus = User.FindFirst("tipo")?.Value;
         if (tipoUserStatus == "Laboratorio")
         {
@@ -152,7 +172,7 @@ public class TrabalhosController : ControllerBase
                 var notificacaoStatus = new Notificacao
                 {
                     Id = Guid.NewGuid(),
-                    UsuarioId = trabCompleto.ClinicaId, // Vai para a Clínica
+                    UsuarioId = trabCompleto.ClinicaId,
                     Titulo = "Status Atualizado ✨",
                     Texto = $"O trabalho de {trabCompleto.PacienteNome} ({(trabCompleto.Servico?.Nome ?? "Personalizado")}) mudou para: {novoStatus}",
                     LinkAction = $"/trabalhos/{trabCompleto.Id}",
@@ -176,6 +196,9 @@ public class TrabalhosController : ControllerBase
         var trabalho = await _context.Trabalhos.FindAsync(id);
         if (trabalho == null) return NotFound("Trabalho não encontrado.");
 
+        // SEGURANÇA MÁXIMA: Só pode enviar arquivos se fizer parte do trabalho
+        if (!TemPermissaoNoTrabalho(trabalho)) return Forbid();
+
         if (arquivo == null || arquivo.Length == 0) return BadRequest("Nenhum arquivo enviado.");
 
         var extensao = Path.GetExtension(arquivo.FileName).ToLower();
@@ -183,7 +206,8 @@ public class TrabalhosController : ControllerBase
         
         if (!permitidos.Contains(extensao)) return BadRequest($"Formato {extensao} não suportado.");
 
-        var pastaUploads = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads");
+        // ATENÇÃO: CORREÇÃO DA PASTA DE UPLOADS (Removido wwwroot)
+        var pastaUploads = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
         if (!Directory.Exists(pastaUploads)) Directory.CreateDirectory(pastaUploads);
 
         var nomeUnico = $"{id}_{Guid.NewGuid()}{extensao}";
@@ -221,6 +245,11 @@ public class TrabalhosController : ControllerBase
     [HttpGet("{id}/anexos")]
     public async Task<IActionResult> GetAnexos(Guid id)
     {
+        // 1. Validar se o trabalho existe e se o user tem permissão
+        var trabalho = await _context.Trabalhos.FindAsync(id);
+        if (trabalho == null) return NotFound();
+        if (!TemPermissaoNoTrabalho(trabalho)) return Forbid();
+
         var anexos = await _context.Anexos
             .Where(a => a.TrabalhoId == id)
             .OrderByDescending(a => a.CreatedAt)
@@ -230,7 +259,7 @@ public class TrabalhosController : ControllerBase
     }
     
     // =============================================================
-    // 6. DELETAR TRABALHO (VERSÃO ROBUSTA)
+    // 6. DELETAR TRABALHO (VERSÃO ROBUSTA E SEGURA)
     // =============================================================
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteTrabalho(Guid id)
@@ -238,23 +267,16 @@ public class TrabalhosController : ControllerBase
         var trabalho = await _context.Trabalhos.FindAsync(id);
         if (trabalho == null) return NotFound();
 
+        // SEGURANÇA MÁXIMA: Apenas quem está no trabalho o pode apagar
+        if (!TemPermissaoNoTrabalho(trabalho)) return Forbid();
+
         try 
         {
-            var mensagens = await _context.Mensagens
-                .Where(m => m.TrabalhoId == id)
-                .ToListAsync();
-            
-            if (mensagens.Any())
-                _context.Mensagens.RemoveRange(mensagens);
+            var mensagens = await _context.Mensagens.Where(m => m.TrabalhoId == id).ToListAsync();
+            if (mensagens.Any()) _context.Mensagens.RemoveRange(mensagens);
 
-            var anexos = await _context.Anexos
-                .Where(a => a.TrabalhoId == id)
-                .ToListAsync();
-
-            if (anexos.Any())
-            {
-                _context.Anexos.RemoveRange(anexos);
-            }
+            var anexos = await _context.Anexos.Where(a => a.TrabalhoId == id).ToListAsync();
+            if (anexos.Any()) _context.Anexos.RemoveRange(anexos);
 
             _context.Trabalhos.Remove(trabalho);
             await _context.SaveChangesAsync();
@@ -272,25 +294,19 @@ public class TrabalhosController : ControllerBase
         }
     }
     
+    // =============================================================
+    // 7. ATUALIZAR PAGAMENTO
+    // =============================================================
     [HttpPatch("{id}/pagamento")]
-    [Authorize]
     public async Task<IActionResult> AtualizarPagamento(Guid id, [FromBody] AtualizarPagamentoRequest request)
     {
-        // Garante que é o dono do laboratório a fazer a alteração
-        var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
-        if (!Guid.TryParse(userIdStr, out var userId)) return Unauthorized();
+        var trabalho = await _context.Trabalhos.FindAsync(id);
+        if (trabalho == null) return NotFound(new { mensagem = "Trabalho não encontrado." });
 
-        var trabalho = await _context.Trabalhos
-            .Include(t => t.Laboratorio)
-            .FirstOrDefaultAsync(t => t.Id == id);
+        // SEGURANÇA MÁXIMA: Apenas o laboratório que fez o trabalho pode dizer se foi pago!
+        var labIdClaim = User.FindFirst("laboratorioId")?.Value;
+        if (trabalho.LaboratorioId.ToString() != labIdClaim) return Forbid();
 
-        if (trabalho == null) 
-            return NotFound(new { mensagem = "Trabalho não encontrado." });
-
-        if (trabalho.Laboratorio.UsuarioId != userId) 
-            return Forbid();
-
-        // Atualiza o estado de pagamento real na Base de Dados
         trabalho.Pago = request.Pago;
         await _context.SaveChangesAsync();
 

@@ -4,8 +4,7 @@ import { notify } from '../utils/notify';
 // Lógica Inteligente de URL:
 // 1. Tenta pegar a variável de ambiente (Vercel injeta isso)
 // 2. Se não existir, usa localhost para desenvolvimento
-const baseURL = 'http://localhost:8080/api';
-
+const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8080/api';
 export const api = axios.create({
     baseURL: baseURL,
 });
