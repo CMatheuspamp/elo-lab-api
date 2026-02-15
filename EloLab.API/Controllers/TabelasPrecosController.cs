@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
+using EloLab.API.DTOs;
 
 namespace EloLab.API.Controllers;
 
@@ -141,5 +142,150 @@ public class TabelasPrecosController : ControllerBase
         await _context.SaveChangesAsync();
 
         return NoContent();
+    }
+    
+    // =======================================================
+    // 1. EDITAR NOME DA TABELA
+    // =======================================================
+    [HttpPut("{id}")]
+    [Authorize]
+    public async Task<IActionResult> EditarTabela(Guid id, [FromBody] NomeTabelaRequest request)
+    {
+        var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(userIdStr, out var userId)) return Unauthorized();
+
+        var lab = await _context.Laboratorios.FirstOrDefaultAsync(l => l.UsuarioId == userId);
+        if (lab == null) return Forbid();
+
+        // Procura a tabela garantindo que pertence a este laboratório
+        var tabela = await _context.TabelasPrecos.FirstOrDefaultAsync(t => t.Id == id && t.LaboratorioId == lab.Id);
+        if (tabela == null) return NotFound(new { mensagem = "Tabela não encontrada." });
+
+        tabela.Nome = request.Nome;
+        await _context.SaveChangesAsync();
+
+        return Ok(tabela);
+    }
+
+    // =======================================================
+    // 2. DUPLICAR TABELA
+    // =======================================================
+    [HttpPost("{id}/duplicar")]
+    [Authorize]
+    public async Task<IActionResult> DuplicarTabela(Guid id)
+    {
+        var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(userIdStr, out var userId)) return Unauthorized();
+
+        var lab = await _context.Laboratorios.FirstOrDefaultAsync(l => l.UsuarioId == userId);
+        if (lab == null) return Forbid();
+
+        // Carrega a tabela original e os seus TabelaItem
+        var tabelaOriginal = await _context.TabelasPrecos
+            .Include(t => t.Itens)
+            .FirstOrDefaultAsync(t => t.Id == id && t.LaboratorioId == lab.Id);
+
+        if (tabelaOriginal == null) return NotFound(new { mensagem = "Tabela não encontrada." });
+
+        using var transaction = await _context.Database.BeginTransactionAsync();
+        try
+        {
+            // 1. Criar a nova Tabela (Usando as propriedades corretas do teu Model)
+            var novaTabela = new TabelaPreco
+            {
+                Id = Guid.NewGuid(),
+                LaboratorioId = tabelaOriginal.LaboratorioId,
+                Nome = tabelaOriginal.Nome + " (Cópia)",
+                CreatedAt = DateTime.UtcNow // Nome corrigido!
+            };
+            
+            _context.TabelasPrecos.Add(novaTabela);
+            await _context.SaveChangesAsync(); // Para o ID existir na BD
+
+            // 2. Copiar os itens (Usando TabelaItem)
+            if (tabelaOriginal.Itens != null && tabelaOriginal.Itens.Any())
+            {
+                var novosItens = tabelaOriginal.Itens.Select(item => new TabelaItem
+                {
+                    Id = Guid.NewGuid(),
+                    TabelaPrecoId = novaTabela.Id,
+                    ServicoId = item.ServicoId,
+                    Preco = item.Preco
+                }).ToList();
+
+                _context.AddRange(novosItens); // Adiciona todos de uma vez (não importa o nome do DbSet)
+                await _context.SaveChangesAsync();
+            }
+
+            await transaction.CommitAsync();
+            
+            // Devolver a tabela novinha em folha para o Frontend a desenhar na hora
+            return Ok(novaTabela);
+        }
+        catch (Exception ex)
+        {
+            await transaction.RollbackAsync();
+            Console.WriteLine($"Erro ao duplicar: {ex.Message}");
+            return StatusCode(500, new { mensagem = "Erro interno ao duplicar tabela." });
+        }
+    }
+
+    // =======================================================
+    // 3. ADICIONAR TODOS OS SERVIÇOS DO CATÁLOGO
+    // =======================================================
+    [HttpPost("{id}/adicionar-todos")]
+    [Authorize]
+    public async Task<IActionResult> AdicionarTodosServicos(Guid id, [FromQuery] decimal desconto = 0)
+    {
+        var userIdStr = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (!Guid.TryParse(userIdStr, out var userId)) return Unauthorized();
+
+        var lab = await _context.Laboratorios.FirstOrDefaultAsync(l => l.UsuarioId == userId);
+        if (lab == null) return Forbid();
+
+        var tabela = await _context.TabelasPrecos
+            .Include(t => t.Itens)
+            .FirstOrDefaultAsync(t => t.Id == id && t.LaboratorioId == lab.Id);
+
+        if (tabela == null) return NotFound(new { mensagem = "Tabela não encontrada." });
+
+        // Vai buscar o catálogo inteiro de serviços do Laboratório
+        var servicosCatalogo = await _context.Servicos
+            .Where(s => s.LaboratorioId == lab.Id && s.Ativo)
+            .ToListAsync();
+
+        int adicionados = 0;
+
+        foreach (var servico in servicosCatalogo)
+        {
+            // Verifica se o serviço já NÃO EXISTE na tabela para evitar duplicados
+            if (!tabela.Itens.Any(i => i.ServicoId == servico.Id))
+            {
+                // Calcula o preço com o desconto (Ex: 10% de desconto)
+                decimal precoFinal = servico.PrecoBase;
+                if (desconto > 0 && desconto <= 100)
+                {
+                    precoFinal = servico.PrecoBase - (servico.PrecoBase * (desconto / 100m));
+                }
+
+                var novoItem = new TabelaItem // Nome do Model Corrigido
+                {
+                    Id = Guid.NewGuid(),
+                    TabelaPrecoId = tabela.Id,
+                    ServicoId = servico.Id,
+                    Preco = precoFinal
+                };
+
+                _context.Add(novoItem);
+                adicionados++;
+            }
+        }
+
+        if (adicionados > 0)
+        {
+            await _context.SaveChangesAsync();
+        }
+
+        return Ok(new { mensagem = $"{adicionados} serviços importados com sucesso." });
     }
 }
