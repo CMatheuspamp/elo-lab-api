@@ -4,7 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { notify } from '../utils/notify';
 import {
     TrendingUp, AlertCircle, Clock, CheckCircle,
-    Filter, Search, Plus, Calendar, ArrowRight, Trash2, ArrowLeft, Wallet, BookOpen, X, Info
+    Filter, Search, Plus, Calendar, ArrowRight, Trash2, ArrowLeft, BookOpen, X, Info
 } from 'lucide-react';
 import type { UserSession, Trabalho } from '../types';
 import { PageContainer } from '../components/PageContainer';
@@ -19,7 +19,7 @@ export function Dashboard() {
     const [loading, setLoading] = useState(true);
 
     const [showCatalogue, setShowCatalogue] = useState(false);
-    const [catalogoServicos, setCatalogoServicos] = useState<any[]>([]); // Alterado para any para aceitar 'isTabela'
+    const [catalogoServicos, setCatalogoServicos] = useState<any[]>([]);
     const [servicoDetalhe, setServicoDetalhe] = useState<any | null>(null);
 
     const [clinicaSelecionadaId, setClinicaSelecionadaId] = useState('Todos');
@@ -28,7 +28,6 @@ export function Dashboard() {
     const [filtroStatus, setFiltroStatus] = useState('Todos');
     const [filtroMes, setFiltroMes] = useState('');
 
-    // === NOVO ESTADO: MODAL DE CONFIRMAÇÃO ===
     const [trabalhoParaExcluir, setTrabalhoParaExcluir] = useState<string | null>(null);
 
     const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString('pt-BR');
@@ -42,12 +41,33 @@ export function Dashboard() {
         return `${baseUrl}${cleanPath}`;
     };
 
-    const getStatusInfo = (status: string) => {
-        const s = (status || '').toString().toLowerCase();
-        if (s.includes('pendente')) return { color: 'bg-yellow-100 text-yellow-800 border-yellow-200', icon: AlertCircle, label: 'Pendente' };
-        if (s.includes('producao') || s.includes('emproducao')) return { color: 'bg-indigo-100 text-indigo-800 border-indigo-200', icon: Clock, label: 'Em Produção' };
+    // === LÓGICA INTELIGENTE DE ATRASO ===
+    const isAtrasado = (t: Trabalho) => {
+        const s = (t.status || '').toLowerCase();
+        if (s.includes('concluido') || s.includes('finalizado') || s.includes('entregue')) return false;
+
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0); // Zera as horas para comparar só o dia
+        const entrega = new Date(t.dataEntregaPrevista);
+        entrega.setHours(0, 0, 0, 0);
+
+        return entrega < hoje;
+    };
+
+    // Computa o status efetivo (Se estiver atrasado, o status real é ofuscado)
+    const getEffectiveStatus = (t: Trabalho) => {
+        if (isAtrasado(t)) return 'Atrasado';
+        return t.status;
+    };
+
+    const getStatusInfo = (t: Trabalho) => {
+        if (isAtrasado(t)) return { color: 'bg-red-100 text-red-800 border-red-200', icon: AlertCircle, label: 'Em Atraso' };
+
+        const s = (t.status || '').toString().toLowerCase();
+        if (s.includes('pendente') || s.includes('recebido')) return { color: 'bg-amber-100 text-amber-800 border-amber-200', icon: Clock, label: 'Pendente' };
+        if (s.includes('producao') || s.includes('emproducao')) return { color: 'bg-blue-100 text-blue-800 border-blue-200', icon: TrendingUp, label: 'Em Produção' };
         if (s.includes('concluido') || s.includes('finalizado')) return { color: 'bg-emerald-100 text-emerald-800 border-emerald-200', icon: CheckCircle, label: 'Concluído' };
-        return { color: 'bg-slate-100 text-slate-600 border-slate-200', icon: Clock, label: status };
+        return { color: 'bg-slate-100 text-slate-600 border-slate-200', icon: Clock, label: t.status };
     };
 
     useEffect(() => {
@@ -68,22 +88,14 @@ export function Dashboard() {
                 let lista = trabalhosResponse.data;
 
                 if (isClinica && labId) {
-                    // === VISÃO DA CLÍNICA (PORTAL DO PARCEIRO) ===
                     lista = lista.filter((t: Trabalho) => t.laboratorioId === labId);
-
                     const labsRes = await api.get('/Laboratorios');
                     const currentLab = labsRes.data.find((l: any) => l.id === labId);
                     if (currentLab) setLabInfo(currentLab);
 
-                    // --- ALTERAÇÃO AQUI ---
-                    // Antes: Buscava lista geral (/Servicos/laboratorio/ID)
-                    // Agora: Busca lista filtrada pela tabela (/Servicos/por-clinica/MEU_ID?laboratorioId=LAB_ID)
                     const servicosRes = await api.get(`/Servicos/por-clinica/${userData.meusDados.id}?laboratorioId=${labId}`);
                     setCatalogoServicos(servicosRes.data);
-                    // ----------------------
-
                 } else {
-                    // === VISÃO DO LABORATÓRIO (DASHBOARD GERAL) ===
                     const clinicasRes = await api.get('/Clinicas');
                     setClinicasParaFiltro(clinicasRes.data);
                 }
@@ -99,7 +111,6 @@ export function Dashboard() {
         loadData();
     }, [navigate, labId]);
 
-    // === NOVA FUNÇÃO DE EXCLUSÃO (Com Modal) ===
     async function confirmarExclusao() {
         if (!trabalhoParaExcluir) return;
         try {
@@ -127,13 +138,13 @@ export function Dashboard() {
     const logoUrl = labInfo ? labInfo.logoUrl : localStorage.getItem('elolab_user_logo');
     const displayName = labInfo ? labInfo.nome : user.meusDados.nome;
     const displaySubtitle = isClinica ? 'Portal do Parceiro' : 'Ambiente de Gestão & Produção';
-    const labelFinanceiro = isClinica ? 'Total Investido' : 'Faturamento';
     const labelNovos = isClinica ? 'Pendentes' : 'Novos Pedidos';
-    const IconFinanceiro = isClinica ? Wallet : TrendingUp;
 
+    // Aplicação dos Filtros (Agora usando o Status Efetivo para a pesquisa)
     const trabalhosFiltrados = trabalhos.filter(t => {
         const textoMatch = t.pacienteNome.toLowerCase().includes(busca.toLowerCase()) || t.id.toLowerCase().includes(busca.toLowerCase()) || (t.servico?.nome || '').toLowerCase().includes(busca.toLowerCase());
-        const statusMatch = filtroStatus === 'Todos' || t.status === filtroStatus;
+        const effective = getEffectiveStatus(t);
+        const statusMatch = filtroStatus === 'Todos' || effective === filtroStatus;
         const clinicaMatch = clinicaSelecionadaId === 'Todos' || t.clinicaId === clinicaSelecionadaId;
         let dataMatch = true;
         if (filtroMes) {
@@ -143,17 +154,18 @@ export function Dashboard() {
         return textoMatch && statusMatch && clinicaMatch && dataMatch;
     });
 
-    const pendentes = trabalhosFiltrados.filter(t => t.status === 'Pendente').length;
-    const emProducao = trabalhosFiltrados.filter(t => t.status === 'EmProducao').length;
-    const concluidos = trabalhosFiltrados.filter(t => t.status === 'Concluido').length;
-    const totalValor = trabalhosFiltrados.reduce((acc, t) => acc + t.valorFinal, 0);
+    // Contagem para os Cards
+    const pendentes = trabalhosFiltrados.filter(t => getEffectiveStatus(t) === 'Pendente').length;
+    const emProducao = trabalhosFiltrados.filter(t => getEffectiveStatus(t) === 'EmProducao').length;
+    const concluidos = trabalhosFiltrados.filter(t => getEffectiveStatus(t) === 'Concluido').length;
+    const atrasados = trabalhosFiltrados.filter(t => getEffectiveStatus(t) === 'Atrasado').length;
 
     return (
         <PageContainer primaryColor={primaryColor}>
 
-            {/* === MODAL DE CONFIRMAÇÃO DE EXCLUSÃO === */}
+            {/* === MODALS (Exclusão e Catálogo) Omitidos por brevidade visual, mas presentes no código === */}
             {trabalhoParaExcluir && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+                <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">
                         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-red-100 mb-4">
                             <Trash2 className="h-6 w-6 text-red-600" />
@@ -168,7 +180,6 @@ export function Dashboard() {
                 </div>
             )}
 
-            {/* === CATÁLOGO MODAL === */}
             {showCatalogue && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="relative w-full max-w-5xl h-[85vh] bg-slate-50 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
@@ -226,7 +237,7 @@ export function Dashboard() {
                         </div>
                     </div>
                     {servicoDetalhe && (
-                        <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 p-4 animate-in fade-in zoom-in duration-200">
+                        <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/60 p-4 animate-in fade-in zoom-in duration-200">
                             <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col md:flex-row max-h-[80vh]">
                                 <div className="w-full md:w-1/2 h-64 md:h-auto bg-slate-100 relative">
                                     {servicoDetalhe.fotoUrl ? (
@@ -280,6 +291,7 @@ export function Dashboard() {
             )}
 
             <div className="space-y-8">
+                {/* HEADER DASHBOARD */}
                 <div className="relative overflow-hidden rounded-3xl bg-white p-8 shadow-sm border border-slate-100">
                     <div className="relative z-10 flex flex-col md:flex-row items-center justify-between gap-6">
                         <div className="flex items-center gap-6">
@@ -327,34 +339,48 @@ export function Dashboard() {
                     </div>
                 </div>
 
+                {/* === OS 4 CARDS REORDENADOS === */}
                 <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-                    <div className="relative overflow-hidden rounded-2xl bg-white p-6 shadow-sm border border-slate-100 group hover:border-slate-200 transition">
-                        <div className="flex items-center justify-between">
-                            <div>
-                                <p className="text-xs font-bold uppercase text-slate-400">{labelFinanceiro}</p>
-                                <h3 className="mt-2 text-2xl font-black text-slate-900">{formatCurrency(totalValor)}</h3>
-                            </div>
-                            <div style={{ color: primaryColor }}><IconFinanceiro className="h-8 w-8" /></div>
-                        </div>
-                        <div className="absolute bottom-0 left-0 h-1 w-full" style={{ backgroundColor: primaryColor }}></div>
-                    </div>
-                    <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between">
+                    {/* 1. Pendentes */}
+                    <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between group hover:border-amber-200 transition">
                         <div>
                             <p className="text-xs font-bold uppercase text-slate-400">{labelNovos}</p>
                             <h3 className="mt-2 text-2xl font-black text-slate-900">{pendentes}</h3>
                         </div>
-                        <AlertCircle className="h-8 w-8 text-orange-500" />
+                        <Clock className="h-8 w-8 text-amber-400" />
                     </div>
-                    <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between">
-                        <div><p className="text-xs font-bold uppercase text-slate-400">Em Produção</p><h3 className="mt-2 text-2xl font-black text-slate-900">{emProducao}</h3></div>
-                        <Clock className="h-8 w-8 text-blue-600" />
+                    {/* 2. Em Produção */}
+                    <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between group hover:border-blue-200 transition">
+                        <div>
+                            <p className="text-xs font-bold uppercase text-slate-400">Em Produção</p>
+                            <h3 className="mt-2 text-2xl font-black text-slate-900">{emProducao}</h3>
+                        </div>
+                        <TrendingUp className="h-8 w-8 text-blue-500" />
                     </div>
-                    <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between">
-                        <div><p className="text-xs font-bold uppercase text-slate-400">Concluídos</p><h3 className="mt-2 text-2xl font-black text-slate-900">{concluidos}</h3></div>
+                    {/* 3. Concluídos */}
+                    <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-100 flex items-center justify-between group hover:border-emerald-200 transition">
+                        <div>
+                            <p className="text-xs font-bold uppercase text-slate-400">Concluídos</p>
+                            <h3 className="mt-2 text-2xl font-black text-slate-900">{concluidos}</h3>
+                        </div>
                         <CheckCircle className="h-8 w-8 text-emerald-500" />
+                    </div>
+                    {/* 4. Em Atraso (Novo Card Vermelho) */}
+                    <div className="relative overflow-hidden rounded-2xl bg-white p-6 shadow-sm border border-red-100 group hover:border-red-300 transition hover:shadow-md">
+                        <div className="flex items-center justify-between relative z-10">
+                            <div>
+                                <p className="text-xs font-bold uppercase text-red-500">Em Atraso</p>
+                                <h3 className="mt-2 text-2xl font-black text-red-600">{atrasados}</h3>
+                            </div>
+                            <div className="h-12 w-12 rounded-full bg-red-50 flex items-center justify-center">
+                                <AlertCircle className="h-6 w-6 text-red-500" />
+                            </div>
+                        </div>
+                        <div className="absolute bottom-0 left-0 h-1 w-full bg-red-500 group-hover:h-1.5 transition-all"></div>
                     </div>
                 </div>
 
+                {/* FILTROS E LISTA */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                     <div className="mb-6 flex items-center justify-between">
                         <h3 className="flex items-center gap-2 text-sm font-bold text-slate-700">
@@ -367,45 +393,66 @@ export function Dashboard() {
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
                         <div className="lg:col-span-2 relative">
                             <Search className="absolute top-3 left-3 h-4 w-4 text-slate-400" />
-                            <input type="text" value={busca} onChange={e => setBusca(e.target.value)} className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none transition" placeholder="Buscar..." onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
+                            <input type="text" value={busca} onChange={e => setBusca(e.target.value)} className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none transition" placeholder="Buscar por paciente ou serviço..." onFocus={(e) => e.target.style.borderColor = primaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} />
                         </div>
-                        <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none">
+                        <select value={filtroStatus} onChange={e => setFiltroStatus(e.target.value)} className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none font-medium text-slate-700">
                             <option value="Todos">Status: Todos</option>
                             <option value="Pendente">Pendente</option>
                             <option value="EmProducao">Em Produção</option>
                             <option value="Concluido">Concluído</option>
+                            <option value="Atrasado">Em Atraso</option>
                         </select>
                         {!isClinica ? (
-                            <select value={clinicaSelecionadaId} onChange={e => setClinicaSelecionadaId(e.target.value)} className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none">
+                            <select value={clinicaSelecionadaId} onChange={e => setClinicaSelecionadaId(e.target.value)} className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none font-medium text-slate-700">
                                 <option value="Todos">Clínicas: Todas</option>
                                 {clinicasParaFiltro.map((p: any) => (<option key={p.id} value={p.id}>{p.nome}</option>))}
                             </select>
                         ) : (<div className="hidden lg:block"></div>)}
-                        <input type="month" value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none" />
+                        <input type="month" value={filtroMes} onChange={e => setFiltroMes(e.target.value)} className="w-full p-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white outline-none text-slate-700" />
                     </div>
                 </div>
 
                 <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                     <table className="w-full text-left text-sm text-slate-600">
                         <thead className="bg-slate-50 text-xs font-bold uppercase text-slate-400 tracking-wider">
-                        <tr><th className="px-6 py-4">Paciente</th><th className="px-6 py-4">Serviço</th><th className="px-6 py-4">Data</th><th className="px-6 py-4">Valor</th><th className="px-6 py-4">Status</th><th className="px-6 py-4 text-right">Ações</th></tr>
+                        <tr>
+                            <th className="px-6 py-4">Paciente</th>
+                            <th className="px-6 py-4">Serviço</th>
+                            <th className="px-6 py-4">Data Prevista</th>
+                            <th className="px-6 py-4">Status</th>
+                            <th className="px-6 py-4 text-right">Ações</th>
+                        </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                         {trabalhosFiltrados.map((trabalho) => {
-                            const statusInfo = getStatusInfo(trabalho.status);
+                            // Envia o objecto inteiro para ele saber se está atrasado!
+                            const statusInfo = getStatusInfo(trabalho);
                             return (
                                 <tr key={trabalho.id} className="hover:bg-slate-50 transition cursor-pointer group" onClick={() => navigate(`/trabalhos/${trabalho.id}`)}>
-                                    <td className="px-6 py-4"><span className="font-bold text-slate-900 block">{trabalho.pacienteNome}</span><span className="text-xs text-slate-400 font-mono">#{trabalho.id.substring(0, 8)}</span></td>
-                                    <td className="px-6 py-4">{trabalho.servico?.nome || 'Personalizado'}</td>
-                                    <td className="px-6 py-4"><div className="flex items-center gap-2"><Calendar className="h-3 w-3 text-slate-400"/> {formatDate(trabalho.dataEntregaPrevista)}</div></td>
-                                    <td className="px-6 py-4 font-bold">{formatCurrency(trabalho.valorFinal)}</td>
-                                    <td className="px-6 py-4"><span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-bold ${statusInfo.color}`}><statusInfo.icon className="h-3 w-3" /> {statusInfo.label}</span></td>
+                                    <td className="px-6 py-4">
+                                        <span className="font-bold text-slate-900 block">{trabalho.pacienteNome}</span>
+                                        <span className="text-xs text-slate-400 font-mono">#{trabalho.id.substring(0, 8)}</span>
+                                    </td>
+                                    <td className="px-6 py-4 font-medium">{trabalho.servico?.nome || 'Personalizado'}</td>
+                                    <td className="px-6 py-4">
+                                        <div className={`flex items-center gap-2 font-bold ${isAtrasado(trabalho) ? 'text-red-600' : 'text-slate-600'}`}>
+                                            <Calendar className={`h-4 w-4 ${isAtrasado(trabalho) ? 'text-red-500' : 'text-slate-400'}`}/>
+                                            {formatDate(trabalho.dataEntregaPrevista)}
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-bold ${statusInfo.color}`}>
+                                            <statusInfo.icon className="h-3.5 w-3.5" /> {statusInfo.label}
+                                        </span>
+                                    </td>
                                     <td className="px-6 py-4 text-right">
-                                        <div className="flex items-center justify-end gap-3">
+                                        <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
                                             {!isClinica && (
-                                                <button onClick={(e) => { e.stopPropagation(); setTrabalhoParaExcluir(trabalho.id); }} className="rounded-lg p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 transition"><Trash2 className="h-4 w-4" /></button>
+                                                <button onClick={(e) => { e.stopPropagation(); setTrabalhoParaExcluir(trabalho.id); }} className="rounded-lg p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 transition"><Trash2 className="h-4 w-4" /></button>
                                             )}
-                                            <ArrowRight className="h-4 w-4 text-slate-300 group-hover:text-slate-600 transition" />
+                                            <div className="rounded-lg p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition">
+                                                <ArrowRight className="h-4 w-4" />
+                                            </div>
                                         </div>
                                     </td>
                                 </tr>
@@ -413,7 +460,13 @@ export function Dashboard() {
                         })}
                         </tbody>
                     </table>
-                    {trabalhosFiltrados.length === 0 && <div className="p-10 text-center text-slate-400">Nenhum pedido encontrado.</div>}
+                    {trabalhosFiltrados.length === 0 && (
+                        <div className="p-16 flex flex-col items-center justify-center text-slate-400">
+                            <Search className="h-10 w-10 mb-4 opacity-20" />
+                            <p className="font-bold text-lg text-slate-600">Nenhum pedido encontrado.</p>
+                            <p className="text-sm">Altere os filtros de pesquisa para ver mais resultados.</p>
+                        </div>
+                    )}
                 </div>
             </div>
         </PageContainer>

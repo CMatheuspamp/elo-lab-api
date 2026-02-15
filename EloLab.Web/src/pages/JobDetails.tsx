@@ -8,7 +8,7 @@ import {
     ArrowLeft, Building2, CheckCircle, FileText, Loader2, Play,
     Package, Euro, Paperclip, UploadCloud, Trash2, Send, MessageSquare,
     Calendar, User, AlertCircle, Printer, Eye, Download, FileBox,
-    Image as ImageIcon, File
+    Image as ImageIcon, File, Undo2
 } from 'lucide-react';
 import type { Trabalho } from '../types';
 import { StlViewer } from '../components/StlViewer';
@@ -59,7 +59,7 @@ export function JobDetails() {
     const [uploading, setUploading] = useState(false);
     const [sendingMsg, setSendingMsg] = useState(false);
 
-    // === NOVO ESTADO: MODAL DE CONFIRMAÇÃO ===
+    // Modal de Confirmação Exclusão Anexo
     const [anexoParaExcluir, setAnexoParaExcluir] = useState<string | null>(null);
 
     const [novoTexto, setNovoTexto] = useState('');
@@ -135,13 +135,19 @@ export function JobDetails() {
         } catch (err) { if(showError) console.error("Erro mensagens"); }
     }
 
+    // === FUNÇÃO DE ALTERAR E REVERTER STATUS ===
     async function changeStatus(novoStatus: string) {
         if (!trabalho) return;
         setUpdating(true);
         try {
             await api.patch(`/Trabalhos/${trabalho.id}/status`, JSON.stringify(novoStatus), { headers: { 'Content-Type': 'application/json' } });
             setTrabalho({ ...trabalho, status: novoStatus as any });
-            notify.success(`Status alterado para: ${novoStatus}`);
+
+            // Notificações amigáveis dependendo da direção
+            if (novoStatus === 'Pendente') notify.success("Trabalho revertido para Pendente.");
+            else if (novoStatus === 'EmProducao') notify.success("Trabalho movido para Produção.");
+            else notify.success(`Trabalho Concluído!`);
+
         } catch (error) {
             // interceptor cuida
         }
@@ -188,7 +194,6 @@ export function JobDetails() {
         finally { setSendingMsg(false); }
     }
 
-    // === NOVA FUNÇÃO DE EXCLUSÃO (Com Modal) ===
     async function confirmarExclusaoAnexo() {
         if(!anexoParaExcluir) return;
         try {
@@ -216,9 +221,11 @@ export function JobDetails() {
     if (loading) return <div className="flex h-screen items-center justify-center text-slate-400"><Loader2 className="animate-spin" /></div>;
     if (!trabalho || erroCarregamento) return <div className="flex h-screen flex-col items-center justify-center gap-4 text-slate-500"><AlertCircle className="h-10 w-10 text-red-400" /><p>{erroCarregamento}</p><button onClick={() => navigate('/dashboard')} className="text-blue-600 hover:underline">Voltar</button></div>;
 
-    const isPendente = trabalho.status === 'Pendente';
-    const isProducao = trabalho.status === 'EmProducao';
-    const isConcluido = trabalho.status === 'Concluido';
+    // Normalização de status
+    const statusReal = (trabalho.status || '').toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    const isPendente = statusReal === 'pendente' || statusReal === 'recebido';
+    const isProducao = statusReal === 'emproducao' || statusReal === 'em producao';
+    const isConcluido = statusReal === 'concluido' || statusReal === 'finalizado';
 
     return (
         <PageContainer primaryColor={brandColor}>
@@ -249,6 +256,7 @@ export function JobDetails() {
                     {souLaboratorio ? 'Voltar ao Dashboard' : 'Voltar ao Painel do Parceiro'}
                 </button>
 
+                {/* === HEADER DO TRABALHO === */}
                 <div className="mb-8 flex flex-col justify-between gap-6 rounded-2xl border border-slate-200 bg-white p-8 shadow-sm md:flex-row md:items-center">
                     <div>
                         <div className="flex items-center gap-4">
@@ -262,7 +270,7 @@ export function JobDetails() {
                         </div>
                     </div>
 
-                    <div className="flex gap-3 flex-wrap">
+                    <div className="flex gap-3 flex-wrap items-center">
                         <button onClick={() => window.open(`/print/job/${trabalho.id}`, '_blank')} className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 shadow-sm transition"><Printer className="h-5 w-5" /></button>
 
                         {!souLaboratorio && (
@@ -271,17 +279,34 @@ export function JobDetails() {
                             </div>
                         )}
 
+                        {/* === BOTÕES INTELIGENTES (Avançar e Reverter) === */}
                         {souLaboratorio && isPendente && (
                             <button onClick={() => changeStatus('EmProducao')} disabled={updating} className="flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-bold text-white shadow-lg transition hover:-translate-y-0.5 disabled:opacity-50" style={{ backgroundColor: brandColor, boxShadow: `0 4px 14px ${brandColor}40` }}>
                                 {updating ? <Loader2 className="animate-spin h-5 w-5"/> : <Play className="h-5 w-5" />} Iniciar Produção
                             </button>
                         )}
+
                         {souLaboratorio && isProducao && (
-                            <button onClick={() => changeStatus('Concluido')} disabled={updating} className="flex items-center gap-2 rounded-xl bg-green-600 px-6 py-3 text-sm font-bold text-white hover:bg-green-700 shadow-lg shadow-green-200 transition disabled:opacity-50">
-                                {updating ? <Loader2 className="animate-spin h-5 w-5"/> : <CheckCircle className="h-5 w-5" />} Concluir Trabalho
-                            </button>
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => changeStatus('Pendente')} disabled={updating} className="flex items-center justify-center p-3 rounded-xl border border-slate-200 text-slate-400 hover:text-amber-600 hover:border-amber-200 hover:bg-amber-50 transition" title="Reverter para Pendente">
+                                    <Undo2 className="h-5 w-5" />
+                                </button>
+                                <button onClick={() => changeStatus('Concluido')} disabled={updating} className="flex items-center gap-2 rounded-xl bg-green-600 px-6 py-3 text-sm font-bold text-white hover:bg-green-700 shadow-lg shadow-green-200 transition disabled:opacity-50">
+                                    {updating ? <Loader2 className="animate-spin h-5 w-5"/> : <CheckCircle className="h-5 w-5" />} Concluir Trabalho
+                                </button>
+                            </div>
                         )}
-                        {isConcluido && <button disabled className="flex items-center gap-2 rounded-xl bg-slate-100 px-6 py-3 text-sm font-bold text-slate-500 cursor-default border border-slate-200"><Package className="h-5 w-5" /> Pronto para Entrega</button>}
+
+                        {souLaboratorio && isConcluido && (
+                            <div className="flex items-center gap-2">
+                                <button onClick={() => changeStatus('EmProducao')} disabled={updating} className="flex items-center justify-center p-3 rounded-xl border border-slate-200 text-slate-400 hover:text-blue-600 hover:border-blue-200 hover:bg-blue-50 transition" title="Reabrir Produção">
+                                    <Undo2 className="h-5 w-5" />
+                                </button>
+                                <button disabled className="flex items-center gap-2 rounded-xl bg-slate-100 px-6 py-3 text-sm font-bold text-slate-500 cursor-default border border-slate-200">
+                                    <Package className="h-5 w-5" /> Pronto para Entrega
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
 

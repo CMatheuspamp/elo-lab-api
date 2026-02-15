@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'; // <--- Importei useEffect e useSta
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
     LayoutDashboard, PlusCircle, Building2,
-    Tag, UserCircle, LogOut, Users, Bell, ScrollText
+    Tag, UserCircle, LogOut, Users, Bell, ScrollText, CalendarDays
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -103,6 +103,12 @@ export function Sidebar() {
             icon: ScrollText,
             path: '/tabelas',
             show: userType === 'Laboratorio'
+        },
+        {
+            label: 'Agenda',
+            icon: CalendarDays,
+            path: '/agenda',
+            show: userType === 'Laboratorio' // Mostra apenas para o Laboratório
         },
         // === 6. NOTIFICAÇÕES (COM BADGE) ===
         {
