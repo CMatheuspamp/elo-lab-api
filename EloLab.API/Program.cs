@@ -151,8 +151,12 @@ app.UseStaticFiles(new StaticFileOptions
     ContentTypeProvider = provider 
 });
 
-var caminhoUploads = Path.Combine(app.Environment.ContentRootPath, "uploads");
+// 8.2 A MÁGICA DOS UPLOADS ACONTECE AQUI:
+var caminhoUploads = Environment.GetEnvironmentVariable("RENDER_UPLOADS_PATH") 
+                     ?? Path.Combine(app.Environment.ContentRootPath, "uploads");
+
 if (!Directory.Exists(caminhoUploads)) Directory.CreateDirectory(caminhoUploads);
+
 app.UseStaticFiles(new StaticFileOptions 
 { 
     FileProvider = new PhysicalFileProvider(caminhoUploads), 

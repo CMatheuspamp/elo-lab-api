@@ -98,23 +98,21 @@ public class LaboratoriosController : ControllerBase
     [HttpPost("logo")]
     public async Task<IActionResult> UploadLogo(IFormFile arquivo)
     {
-        if (arquivo == null || arquivo.Length == 0)
-            return BadRequest("Nenhum arquivo enviado.");
+        if (arquivo == null || arquivo.Length == 0) return BadRequest("Nenhum arquivo enviado.");
 
         var extensao = Path.GetExtension(arquivo.FileName).ToLower();
         var permitidos = new[] { ".jpg", ".jpeg", ".png", ".webp" }; 
-        
-        if (!permitidos.Contains(extensao))
-            return BadRequest("Formato inválido. Use JPG, PNG ou WEBP.");
+        if (!permitidos.Contains(extensao)) return BadRequest("Formato inválido.");
 
         var labIdClaim = User.FindFirst("laboratorioId")?.Value;
         if (string.IsNullOrEmpty(labIdClaim)) return Unauthorized();
 
-        // 🚨 A GRANDE MUDANÇA: Agora guardamos no cofre "uploads" e não no "wwwroot"
-        var pastaUploads = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+        // 🚨 LÊ A VARIÁVEL DE AMBIENTE PARA ENCONTRAR O COFRE
+        var pastaUploads = Environment.GetEnvironmentVariable("RENDER_UPLOADS_PATH") 
+                           ?? Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+                           
         if (!Directory.Exists(pastaUploads)) Directory.CreateDirectory(pastaUploads);
 
-        // Mantemos a correção do nome único (Preview Perfeito)
         var nomeArquivo = $"{labIdClaim}_{Guid.NewGuid():N}{extensao}";
         var caminhoCompleto = Path.Combine(pastaUploads, nomeArquivo);
 
@@ -123,9 +121,7 @@ public class LaboratoriosController : ControllerBase
             await arquivo.CopyToAsync(stream);
         }
 
-        // A URL devolvida ao React agora aponta para a rota correta do cofre
         var urlPublica = $"/uploads/{nomeArquivo}";
-
         return Ok(new { url = urlPublica });
     }
 }
