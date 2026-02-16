@@ -151,14 +151,16 @@ export function Sidebar() {
                     <img
                         src={getFullUrl(logoUrl)}
                         alt="Logo"
-                        className="max-h-28 w-auto max-w-full object-contain drop-shadow-sm transition-transform hover:scale-105"
+                        // Aumentámos de max-h-28 para max-h-32 (maior)
+                        className="max-h-32 w-auto max-w-full object-contain drop-shadow-sm transition-transform hover:scale-105"
                     />
                 ) : (
-                    <div className="flex flex-col items-center gap-3">
+                    <div className="flex flex-col items-center gap-3 w-full h-full justify-center">
                         <img
                             src="/logo.png"
                             alt="EloLab Systems"
-                            className="max-h-16 w-auto max-w-full object-contain drop-shadow-sm transition-transform hover:scale-105"
+                            // Aumentámos muito a logo original e removemos o texto que estava abaixo
+                            className="max-h-24 w-auto max-w-full object-contain drop-shadow-sm transition-transform hover:scale-105"
                         />
                     </div>
                 )}

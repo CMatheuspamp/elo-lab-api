@@ -92,11 +92,12 @@ export function Login() {
                 <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-500/20 blur-[120px] rounded-full z-0"></div>
 
                 <div className="relative z-20 w-full max-w-lg">
-                    <div className="flex items-center gap-3 mb-16">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-blue-700 font-black text-white shadow-xl shadow-blue-500/20 border border-blue-400/30">
-                            EL
-                        </div>
-                        <span className="text-2xl font-bold tracking-tight text-white">EloLab</span>
+                    <div className="mb-16">
+                        <img
+                            src="/logo.png"
+                            alt="EloLab Systems"
+                            className="h-16 w-auto object-contain drop-shadow-lg"
+                        />
                     </div>
 
                     <h2 className="text-4xl font-black text-white mb-6 leading-tight drop-shadow-md">Acesso ao portal de gestão integrada.</h2>
@@ -121,11 +122,12 @@ export function Login() {
             {/* Right Side - Form */}
             <div className="flex w-full lg:w-[55%] items-center justify-center p-8 sm:p-12 relative z-10">
                 {/* Mobile Logo */}
-                <div className="absolute top-8 left-8 lg:hidden flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 font-black text-white text-xs shadow-md">
-                        EL
-                    </div>
-                    <span className="font-bold text-slate-900 tracking-tight">EloLab</span>
+                <div className="absolute top-8 left-8 lg:hidden">
+                    <img
+                        src="/logo.png"
+                        alt="EloLab Systems"
+                        className="h-10 w-auto object-contain drop-shadow-sm"
+                    />
                 </div>
 
                 <div className="w-full max-w-md animate-in slide-in-from-bottom-8 duration-500 fade-in">
