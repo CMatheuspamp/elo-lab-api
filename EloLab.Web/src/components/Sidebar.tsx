@@ -145,22 +145,22 @@ export function Sidebar() {
             className="fixed left-0 top-0 h-screen w-64 flex flex-col z-20 transition-all duration-300"
             style={sidebarStyle}
         >
-            {/* LOGO AREA */}
-            <div className="flex h-40 flex-col items-center justify-center border-b border-slate-100/50 px-6 py-6">
+            {/* LOGO AREA - Aumentámos o espaço de h-40 para h-48 */}
+            <div className="flex h-48 flex-col items-center justify-center border-b border-slate-100/50 px-6 py-6">
                 {logoUrl ? (
                     <img
                         src={getFullUrl(logoUrl)}
                         alt="Logo"
-                        // Aumentámos de max-h-28 para max-h-32 (maior)
-                        className="max-h-32 w-auto max-w-full object-contain drop-shadow-sm transition-transform hover:scale-105"
+                        // Custom logo maior (max-h-40)
+                        className="max-h-40 w-auto max-w-full object-contain drop-shadow-sm transition-transform hover:scale-105"
                     />
                 ) : (
                     <div className="flex flex-col items-center gap-3 w-full h-full justify-center">
                         <img
                             src="/logo.png"
                             alt="EloLab Systems"
-                            // Aumentámos muito a logo original e removemos o texto que estava abaixo
-                            className="max-h-24 w-auto max-w-full object-contain drop-shadow-sm transition-transform hover:scale-105"
+                            // Logo padrão maior (max-h-32)
+                            className="max-h-32 w-auto max-w-full object-contain drop-shadow-sm transition-transform hover:scale-105"
                         />
                     </div>
                 )}

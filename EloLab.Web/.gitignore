@@ -27,3 +27,8 @@ dist-ssr
 node_modules/
 dist/
 .env
+
+# Ignorar configurações locais com senhas
+appsettings.Development.json
+appsettings.*.json
+!appsettings.json

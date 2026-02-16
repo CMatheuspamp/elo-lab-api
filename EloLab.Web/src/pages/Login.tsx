@@ -92,11 +92,12 @@ export function Login() {
                 <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-500/20 blur-[120px] rounded-full z-0"></div>
 
                 <div className="relative z-20 w-full max-w-lg">
-                    <div className="mb-16">
+                    {/* Logótipo GIGANTE e centralizado na área esquerda */}
+                    <div className="mb-12 flex items-center justify-center w-full">
                         <img
                             src="/logo.png"
                             alt="EloLab Systems"
-                            className="h-16 w-auto object-contain drop-shadow-lg"
+                            className="h-36 w-auto object-contain drop-shadow-2xl"
                         />
                     </div>
 
@@ -121,12 +122,12 @@ export function Login() {
 
             {/* Right Side - Form */}
             <div className="flex w-full lg:w-[55%] items-center justify-center p-8 sm:p-12 relative z-10">
-                {/* Mobile Logo */}
-                <div className="absolute top-8 left-8 lg:hidden">
+                {/* Mobile Logo Centralizado e Maior */}
+                <div className="absolute top-8 left-0 right-0 lg:hidden flex justify-center w-full">
                     <img
                         src="/logo.png"
                         alt="EloLab Systems"
-                        className="h-10 w-auto object-contain drop-shadow-sm"
+                        className="h-16 w-auto object-contain drop-shadow-md"
                     />
                 </div>
 

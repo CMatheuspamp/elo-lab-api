@@ -15,10 +15,11 @@ export function Landing() {
 
             {/* === NAVBAR === */}
             <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/40 bg-white/70 backdrop-blur-xl transition-all shadow-sm">
-                <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6">
+                {/* Aumentámos a altura da Navbar de h-20 para h-28 */}
+                <div className="mx-auto flex h-28 max-w-7xl items-center justify-between px-6">
                     <div className="flex items-center">
-                        {/* Aumentámos a imagem (h-12) e removemos o <span> com o texto */}
-                        <img src="/logo.png" alt="EloLab Systems" className="h-12 w-auto object-contain" />
+                        {/* Imagem GIGANTE (h-20) */}
+                        <img src="/logo.png" alt="EloLab Systems" className="h-20 w-auto object-contain drop-shadow-sm" />
                     </div>
                     <div className="flex items-center gap-6">
                         <Link to="/login" className="hidden font-semibold text-slate-600 transition hover:text-blue-600 sm:block">
@@ -351,7 +352,7 @@ export function Landing() {
             <footer className="bg-white/50 py-8 text-center text-sm text-slate-500">
                 <div className="flex items-center justify-center mb-4">
                     {/* Aumentámos a imagem (h-10) e removemos o <span> */}
-                    <img src="/logo.png" alt="EloLab Systems" className="h-10 w-auto object-contain opacity-75 grayscale hover:grayscale-0 transition-all" />
+                    <img src="/logo.png" alt="EloLab Systems" className="h-14 w-auto object-contain opacity-75 grayscale hover:grayscale-0 transition-all" />
                 </div>
                 <p>&copy; {new Date().getFullYear()} EloLab Systems. Todos os direitos reservados.</p>
             </footer>
