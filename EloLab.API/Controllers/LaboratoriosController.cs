@@ -113,7 +113,8 @@ public class LaboratoriosController : ControllerBase
         var pastaLogos = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "logos");
         if (!Directory.Exists(pastaLogos)) Directory.CreateDirectory(pastaLogos);
 
-        var nomeArquivo = $"{labIdClaim}_logo{extensao}";
+        // Adicionamos um Guid único para que cada ficheiro tenha o seu próprio nome e nunca esmague outro
+        var nomeArquivo = $"{labIdClaim}_{Guid.NewGuid():N}{extensao}";
         var caminhoCompleto = Path.Combine(pastaLogos, nomeArquivo);
 
         using (var stream = new FileStream(caminhoCompleto, FileMode.Create))

@@ -106,9 +106,18 @@ export function Profile() {
                 localStorage.removeItem('elolab_user_logo');
             }
 
-            notify.success("Perfil e aparência atualizados!"); // <-- TOAST AQUI
+            // 1. Mostra a mensagem de sucesso
+            notify.success("Perfil e aparência atualizados!");
+
+            // 2. Aguarda 1 segundo e atualiza a interface toda para a nova Logo brilhar!
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
 
         } catch (error) {
+            console.error(error);
+        } finally {
+            // 3. O botão para de girar infinitamente
             setSaving(false);
         }
     }
