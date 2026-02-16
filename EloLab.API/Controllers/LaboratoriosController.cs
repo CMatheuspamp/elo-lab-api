@@ -110,19 +110,21 @@ public class LaboratoriosController : ControllerBase
         var labIdClaim = User.FindFirst("laboratorioId")?.Value;
         if (string.IsNullOrEmpty(labIdClaim)) return Unauthorized();
 
-        var pastaLogos = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "logos");
-        if (!Directory.Exists(pastaLogos)) Directory.CreateDirectory(pastaLogos);
+        // 🚨 A GRANDE MUDANÇA: Agora guardamos no cofre "uploads" e não no "wwwroot"
+        var pastaUploads = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+        if (!Directory.Exists(pastaUploads)) Directory.CreateDirectory(pastaUploads);
 
-        // Adicionamos um Guid único para que cada ficheiro tenha o seu próprio nome e nunca esmague outro
+        // Mantemos a correção do nome único (Preview Perfeito)
         var nomeArquivo = $"{labIdClaim}_{Guid.NewGuid():N}{extensao}";
-        var caminhoCompleto = Path.Combine(pastaLogos, nomeArquivo);
+        var caminhoCompleto = Path.Combine(pastaUploads, nomeArquivo);
 
         using (var stream = new FileStream(caminhoCompleto, FileMode.Create))
         {
             await arquivo.CopyToAsync(stream);
         }
 
-        var urlPublica = $"/logos/{nomeArquivo}";
+        // A URL devolvida ao React agora aponta para a rota correta do cofre
+        var urlPublica = $"/uploads/{nomeArquivo}";
 
         return Ok(new { url = urlPublica });
     }
