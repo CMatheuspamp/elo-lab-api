@@ -111,7 +111,7 @@ export function JobDetails() {
             }
 
             try {
-                const filesResponse = await api.get(`/Anexos/trabalho/${id}`);
+                const filesResponse = await api.get(`/Trabalhos/${id}/anexos`);
                 setAnexos(filesResponse.data);
                 const first3D = filesResponse.data.find((a: Anexo) => a.nomeArquivo.toLowerCase().endsWith('.stl') || a.nomeArquivo.toLowerCase().endsWith('.obj'));
                 if (first3D) setStlParaVisualizar(getFullUrl(first3D.url));
@@ -169,10 +169,14 @@ export function JobDetails() {
         formData.append('trabalhoId', trabalho.id);
         formData.append('arquivo', file);
         try {
-            await api.post('/Anexos/upload', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
-            const filesResponse = await api.get(`/Anexos/trabalho/${trabalho.id}`);
+            // Agora usa a rota do TrabalhosController
+            await api.post(`/Trabalhos/${trabalho.id}/anexo`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+
+            // Busca a lista atualizada
+            const filesResponse = await api.get(`/Trabalhos/${trabalho.id}/anexos`);
             setAnexos(filesResponse.data);
             notify.success("Arquivo enviado com sucesso!");
+
             if(file.name.match(/\.(stl|obj)$/i)) {
                 const novoAnexo = filesResponse.data.find((a: Anexo) => a.nomeArquivo === file.name);
                 if (novoAnexo) setStlParaVisualizar(getFullUrl(novoAnexo.url));
@@ -197,7 +201,7 @@ export function JobDetails() {
     async function confirmarExclusaoAnexo() {
         if(!anexoParaExcluir) return;
         try {
-            await api.delete(`/Anexos/${anexoParaExcluir}`);
+            await api.delete(`/Trabalhos/anexo/${anexoParaExcluir}`);
             setAnexos(anexos.filter(a => a.id !== anexoParaExcluir));
             notify.success("Anexo removido.");
 

@@ -206,8 +206,10 @@ public class TrabalhosController : ControllerBase
         
         if (!permitidos.Contains(extensao)) return BadRequest($"Formato {extensao} não suportado.");
 
-        // ATENÇÃO: CORREÇÃO DA PASTA DE UPLOADS (Removido wwwroot)
-        var pastaUploads = Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+        // ATENÇÃO: LIGAÇÃO AO COFRE (PERSISTENT DISK)
+        var pastaUploads = Environment.GetEnvironmentVariable("RENDER_UPLOADS_PATH") 
+                           ?? Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+                   
         if (!Directory.Exists(pastaUploads)) Directory.CreateDirectory(pastaUploads);
 
         var nomeUnico = $"{id}_{Guid.NewGuid()}{extensao}";
@@ -275,8 +277,41 @@ public class TrabalhosController : ControllerBase
             var mensagens = await _context.Mensagens.Where(m => m.TrabalhoId == id).ToListAsync();
             if (mensagens.Any()) _context.Mensagens.RemoveRange(mensagens);
 
+            // --- INÍCIO DA LIMPEZA INTELIGENTE DE DISCO FÍSICO ---
+            var pastaUploads = Environment.GetEnvironmentVariable("RENDER_UPLOADS_PATH") 
+                               ?? Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+
             var anexos = await _context.Anexos.Where(a => a.TrabalhoId == id).ToListAsync();
-            if (anexos.Any()) _context.Anexos.RemoveRange(anexos);
+            if (anexos.Any()) 
+            {
+                foreach (var anexo in anexos)
+                {
+                    if (!string.IsNullOrEmpty(anexo.Url))
+                    {
+                        var nomeFicheiro = Path.GetFileName(anexo.Url);
+                        var caminhoFisico = Path.Combine(pastaUploads, nomeFicheiro);
+                        
+                        // Apaga o ficheiro do disco para poupar espaço no servidor!
+                        if (System.IO.File.Exists(caminhoFisico))
+                        {
+                            System.IO.File.Delete(caminhoFisico);
+                        }
+                    }
+                }
+                _context.Anexos.RemoveRange(anexos);
+            }
+            
+            // Garante que o arquivo principal também é apagado fisicamente
+            if (!string.IsNullOrEmpty(trabalho.ArquivoUrl))
+            {
+                var nomeArqTrabalho = Path.GetFileName(trabalho.ArquivoUrl);
+                var caminhoArqFisico = Path.Combine(pastaUploads, nomeArqTrabalho);
+                if (System.IO.File.Exists(caminhoArqFisico))
+                {
+                    System.IO.File.Delete(caminhoArqFisico);
+                }
+            }
+            // --- FIM DA LIMPEZA DE DISCO FÍSICO ---
 
             _context.Trabalhos.Remove(trabalho);
             await _context.SaveChangesAsync();
@@ -311,5 +346,38 @@ public class TrabalhosController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok(new { mensagem = "Status financeiro atualizado com sucesso.", pago = trabalho.Pago });
+    }
+    
+    // =============================================================
+    // 8. DELETAR UM ANEXO ESPECÍFICO (FÍSICO E BD)
+    // =============================================================
+    [HttpDelete("anexo/{anexoId}")]
+    public async Task<IActionResult> DeleteAnexoUnico(Guid anexoId)
+    {
+        var anexo = await _context.Anexos.Include(a => a.Trabalho).FirstOrDefaultAsync(a => a.Id == anexoId);
+        if (anexo == null) return NotFound();
+
+        // Só quem tem permissão no trabalho pode apagar o arquivo
+        if (!TemPermissaoNoTrabalho(anexo.Trabalho)) return Forbid();
+
+        var pastaUploads = Environment.GetEnvironmentVariable("RENDER_UPLOADS_PATH") 
+                           ?? Path.Combine(Directory.GetCurrentDirectory(), "uploads");
+
+        // Apaga o ficheiro do Disco Físico
+        if (!string.IsNullOrEmpty(anexo.Url))
+        {
+            var nomeFicheiro = Path.GetFileName(anexo.Url);
+            var caminhoFisico = Path.Combine(pastaUploads, nomeFicheiro);
+            if (System.IO.File.Exists(caminhoFisico))
+            {
+                System.IO.File.Delete(caminhoFisico);
+            }
+        }
+
+        // Apaga da Base de Dados
+        _context.Anexos.Remove(anexo);
+        await _context.SaveChangesAsync();
+
+        return NoContent();
     }
 }
