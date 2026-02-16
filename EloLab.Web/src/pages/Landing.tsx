@@ -17,10 +17,8 @@ export function Landing() {
             <nav className="fixed top-0 left-0 right-0 z-50 border-b border-white/40 bg-white/70 backdrop-blur-xl transition-all shadow-sm">
                 <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-6">
                     <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 font-black text-white shadow-lg shadow-blue-500/30">
-                            EL
-                        </div>
-                        <span className="text-xl font-bold tracking-tight text-slate-900">EloLab</span>
+                        <img src="/logo.png" alt="EloLab Systems" className="h-10 w-auto object-contain" />
+                        <span className="text-xl font-bold tracking-tight text-slate-900">EloLab Systems</span>
                     </div>
                     <div className="flex items-center gap-6">
                         <Link to="/login" className="hidden font-semibold text-slate-600 transition hover:text-blue-600 sm:block">
@@ -352,10 +350,8 @@ export function Landing() {
             {/* === FOOTER === */}
             <footer className="bg-white/50 py-8 text-center text-sm text-slate-500">
                 <div className="flex items-center justify-center gap-2 mb-2">
-                    <div className="flex h-5 w-5 items-center justify-center rounded bg-slate-900 font-black text-white text-[9px] shadow-sm">
-                        EL
-                    </div>
-                    <span className="font-bold text-slate-900">EloLab</span>
+                    <img src="/logo.png" alt="EloLab Systems" className="h-6 w-auto object-contain opacity-75 grayscale hover:grayscale-0 transition-all" />
+                    <span className="font-bold text-slate-900">EloLab Systems</span>
                 </div>
                 <p>&copy; {new Date().getFullYear()} EloLab Systems. Todos os direitos reservados.</p>
             </footer>

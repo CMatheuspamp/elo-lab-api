@@ -155,13 +155,11 @@ export function Sidebar() {
                     />
                 ) : (
                     <div className="flex flex-col items-center gap-3">
-                        <div
-                            className="flex h-12 w-12 items-center justify-center rounded-xl font-bold text-white shadow-lg text-2xl"
-                            style={{ backgroundColor: primaryColor, boxShadow: `0 8px 20px ${primaryColor}50` }}
-                        >
-                            E
-                        </div>
-                        <span className="text-xl font-bold text-slate-900 tracking-tight">EloLab</span>
+                        <img
+                            src="/logo.png"
+                            alt="EloLab Systems"
+                            className="max-h-16 w-auto max-w-full object-contain drop-shadow-sm transition-transform hover:scale-105"
+                        />
                     </div>
                 )}
             </div>

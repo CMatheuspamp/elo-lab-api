@@ -97,19 +97,22 @@ public class AuthController : ControllerBase
             if (laboratorioId != null) claims.Add(new Claim("laboratorioId", laboratorioId.ToString()));
             if (clinicaId != null) claims.Add(new Claim("clinicaId", clinicaId.ToString()));
 
-            var jwtSecret = _configuration["SupabaseSettings:JwtSecret"];
+            var jwtSecret = Environment.GetEnvironmentVariable("JWT_KEY") ?? _configuration["SupabaseSettings:JwtSecret"];
             if (string.IsNullOrEmpty(jwtSecret))
                 return StatusCode(500, new { erro = "Configuração do JWT ausente." });
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret));
             var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+            
+            var supaUrl = Environment.GetEnvironmentVariable("SUPABASE_URL") ?? _configuration["SupabaseSettings:Url"];
 
+            
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(claims),
                 Expires = DateTime.UtcNow.AddDays(7),
                 SigningCredentials = creds,
-                Issuer = $"{_configuration["SupabaseSettings:Url"]}/auth/v1",
+                Issuer = $"{supaUrl}/auth/v1",
                 Audience = "authenticated"
             };
 

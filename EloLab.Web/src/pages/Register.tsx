@@ -196,8 +196,8 @@ export function Register() {
                         </button>
                     )}
 
-                    <Link to="/" className="inline-flex items-center justify-center w-16 h-16 rounded-[1.25rem] bg-gradient-to-br from-blue-600 to-indigo-600 text-white mb-6 shadow-xl shadow-blue-500/30 border border-blue-400/30 hover:scale-105 transition-transform">
-                        <span className="font-black text-3xl">EL</span>
+                    <Link to="/" className="inline-flex items-center justify-center h-20 mb-6 hover:scale-105 transition-transform">
+                        <img src="/logo.png" alt="EloLab Systems" className="h-full w-auto object-contain drop-shadow-md" />
                     </Link>
                     <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight drop-shadow-sm">
                         {step === 0 ? 'Criar Conta' : step === 1 ? 'Dados de Acesso' : 'Detalhes da Empresa'}
