@@ -1,6 +1,5 @@
 import * as signalR from '@microsoft/signalr';
-import { api } from './api';
-import { notify } from '../utils/notify'; // O nosso querido Toaster!
+import { notify } from '../utils/notify';
 
 class SignalRService {
     public connection: signalR.HubConnection | null = null;
@@ -9,41 +8,61 @@ class SignalRService {
         const token = localStorage.getItem('elolab_token');
         if (!token) return;
 
-        const baseUrl = api.defaults.baseURL?.replace('/api', '') || 'http://localhost:5036';
+        const apiUrl = import.meta.env.VITE_API_URL;
+        if (!apiUrl) return;
+
+        // Garante que a URL é absoluta e troca /api por /hubs/app de forma segura
+        const rootUrl = apiUrl.endsWith('/api') ? apiUrl.slice(0, -4) : apiUrl;
+        const hubUrl = `${rootUrl}/hubs/app`;
+
+        console.log('🔗 Tentando conectar ao Hub:', hubUrl);
 
         this.connection = new signalR.HubConnectionBuilder()
-            .withUrl(`${baseUrl}/hubs/app`, {
+            .withUrl(hubUrl, {
                 accessTokenFactory: () => token,
-                skipNegotiation: false,
-                transport: signalR.HttpTransportType.WebSockets | signalR.HttpTransportType.LongPolling
+                // skipNegotiation: true obriga a usar WebSockets direto. 
+                // Se o Render/Vercel der erro 405, mude para false.
+                skipNegotiation: true,
+                transport: signalR.HttpTransportType.WebSockets
             })
             .withAutomaticReconnect()
             .build();
 
-        // 1. INICIA A LIGAÇÃO
         this.connection.start()
             .then(() => {
                 console.log('🟢 Túnel Tempo-Real Conectado!');
-                this.registerListeners(); // <--- CHAMA OS OUVINTES DEPOIS DE LIGAR
+                this.registerListeners(); // <--- ISTO FALTA NO TEU ARQUIVO ATUAL
             })
-            .catch(err => console.error('🔴 Erro no SignalR: ', err));
+            .catch(err => {
+                console.error('🔴 Erro no SignalR (tentando fallback): ', err);
+                // Fallback: Tenta novamente com negociação padrão se o WebSocket direto falhar
+                this.retryWithDefault(hubUrl, token);
+            });
     }
 
-    // 2. REGISTA OS OUVINTES PARA OS EVENTOS DO C#
+    private retryWithDefault(hubUrl: string, token: string) {
+        this.connection = new signalR.HubConnectionBuilder()
+            .withUrl(hubUrl, { accessTokenFactory: () => token })
+            .withAutomaticReconnect()
+            .build();
+
+        this.connection.start()
+            .then(() => {
+                console.log('🟢 Túnel Conectado via Fallback!');
+                this.registerListeners();
+            })
+            .catch(e => console.error('🔴 Falha total:', e));
+    }
+
     private registerListeners() {
         if (!this.connection) return;
 
-        // Ouve exatamente o evento "NovaNotificacao" que o C# envia
         this.connection.on("NovaNotificacao", (notificacao) => {
-            console.log("📨 Nova notificação recebida em tempo real!", notificacao);
-
-            // Dispara o alerta no canto superior direito usando o título e texto reais do banco de dados!
+            console.log("📨 Nova notificação recebida!", notificacao);
             notify.success(`${notificacao.titulo} \n ${notificacao.texto}`);
-
-            // Dispara um evento global no navegador. 
-            // O seu componente de Sidebar e a página de Notificações vão ouvir isto 
-            // para atualizar a bolinha vermelha e a lista sem o utilizador dar F5!
             window.dispatchEvent(new CustomEvent('elolab_nova_notificacao', { detail: notificacao }));
+            // Avisa a sidebar para atualizar o contador
+            window.dispatchEvent(new CustomEvent('elolab_notificacoes_atualizar'));
         });
     }
 
