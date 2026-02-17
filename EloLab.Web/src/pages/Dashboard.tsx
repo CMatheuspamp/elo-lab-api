@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react'; // Adicionado useCallback
 import { api } from '../services/api';
 import { useNavigate, useParams } from 'react-router-dom';
 import { notify } from '../utils/notify';
@@ -73,46 +73,63 @@ export function Dashboard() {
         return { color: 'bg-slate-100 text-slate-600 border-slate-200', icon: Clock, label: t.status };
     };
 
-    useEffect(() => {
-        async function loadData() {
-            try {
-                const meResponse = await api.get('/Auth/me');
-                const userData = meResponse.data;
-                setUser(userData);
+    // Transformado em useCallback para poder ser chamado pelo Listener de tempo real
+    const loadData = useCallback(async () => {
+        try {
+            const meResponse = await api.get('/Auth/me');
+            const userData = meResponse.data;
+            setUser(userData);
 
-                const isClinica = userData.tipo === 'Clinica';
+            const isClinica = userData.tipo === 'Clinica';
 
-                if (isClinica && !labId) {
-                    navigate('/parceiros');
-                    return;
-                }
-
-                const trabalhosResponse = await api.get('/Trabalhos');
-                let lista = trabalhosResponse.data;
-
-                if (isClinica && labId) {
-                    lista = lista.filter((t: Trabalho) => t.laboratorioId === labId);
-                    const labsRes = await api.get('/Laboratorios');
-                    const currentLab = labsRes.data.find((l: any) => l.id === labId);
-                    if (currentLab) setLabInfo(currentLab);
-
-                    const servicosRes = await api.get(`/Servicos/por-clinica/${userData.meusDados.id}?laboratorioId=${labId}`);
-                    setCatalogoServicos(servicosRes.data);
-                } else {
-                    const clinicasRes = await api.get('/Clinicas');
-                    setClinicasParaFiltro(clinicasRes.data);
-                }
-
-                setTrabalhos(lista);
-
-            } catch (error) {
-                console.error(error);
-            } finally {
-                setLoading(false);
+            if (isClinica && !labId) {
+                navigate('/parceiros');
+                return;
             }
+
+            const trabalhosResponse = await api.get('/Trabalhos');
+            let lista = trabalhosResponse.data;
+
+            if (isClinica && labId) {
+                lista = lista.filter((t: Trabalho) => t.laboratorioId === labId);
+                const labsRes = await api.get('/Laboratorios');
+                const currentLab = labsRes.data.find((l: any) => l.id === labId);
+                if (currentLab) setLabInfo(currentLab);
+
+                const servicosRes = await api.get(`/Servicos/por-clinica/${userData.meusDados.id}?laboratorioId=${labId}`);
+                setCatalogoServicos(servicosRes.data);
+            } else {
+                const clinicasRes = await api.get('/Clinicas');
+                setClinicasParaFiltro(clinicasRes.data);
+            }
+
+            setTrabalhos(lista);
+
+        } catch (error) {
+            console.error(error);
+        } finally {
+            setLoading(false);
         }
-        loadData();
     }, [navigate, labId]);
+
+    useEffect(() => {
+        loadData();
+
+        // === LÓGICA DE TEMPO REAL (SIGNALR) ===
+        const handleRealtimeUpdate = (e: any) => {
+            const notificacao = e.detail;
+
+            // Se a notificação for sobre Pedidos ou Status, recarrega a lista
+            const t = notificacao.titulo.toLowerCase();
+            if (t.includes('pedido') || t.includes('status') || t.includes('trabalho') || t.includes('vínculo')) {
+                console.log("🔄 Atualizando Dashboard em tempo real...");
+                loadData();
+            }
+        };
+
+        window.addEventListener('elolab_nova_notificacao', handleRealtimeUpdate);
+        return () => window.removeEventListener('elolab_nova_notificacao', handleRealtimeUpdate);
+    }, [loadData]);
 
     async function confirmarExclusao() {
         if (!trabalhoParaExcluir) return;
@@ -148,7 +165,7 @@ export function Dashboard() {
         const textoMatch = t.pacienteNome.toLowerCase().includes(busca.toLowerCase()) ||
             t.id.toLowerCase().includes(busca.toLowerCase()) ||
             (t.servico?.nome || '').toLowerCase().includes(busca.toLowerCase()) ||
-            clinicaNome.toLowerCase().includes(busca.toLowerCase()); // Permite pesquisar pelo nome da clínica!
+            clinicaNome.toLowerCase().includes(busca.toLowerCase());
 
         const effective = getEffectiveStatus(t);
         const statusMatch = filtroStatus === 'Todos' || effective === filtroStatus;
@@ -168,8 +185,10 @@ export function Dashboard() {
 
     return (
         <PageContainer primaryColor={primaryColor}>
+            {/* ... restante do JSX (Modals, Header, Cards, Tabela) mantido exatamente igual ... */}
+            {/* Omitido aqui para brevidade, mas deve ser mantido no seu arquivo */}
 
-            {/* === MODALS OMITIDOS (MANTÊM-SE IGUAIS) === */}
+            {/* === MODAL EXCLUSÃO === */}
             {trabalhoParaExcluir && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-2xl shadow-xl max-w-sm w-full p-6 text-center">
@@ -186,6 +205,7 @@ export function Dashboard() {
                 </div>
             )}
 
+            {/* === MODAL CATÁLOGO === */}
             {showCatalogue && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
                     <div className="relative w-full max-w-5xl h-[85vh] bg-slate-50 rounded-3xl shadow-2xl flex flex-col overflow-hidden">
@@ -420,7 +440,6 @@ export function Dashboard() {
                             return (
                                 <tr key={trabalho.id} className="hover:bg-slate-50 transition cursor-pointer group" onClick={() => navigate(`/trabalhos/${trabalho.id}`)}>
                                     <td className="px-6 py-4">
-                                        {/* === NOME DO PACIENTE COM CLÍNICA POR BAIXO === */}
                                         <span className="font-bold text-slate-900 block text-base leading-tight">{trabalho.pacienteNome}</span>
                                         <div className="flex items-center gap-2 mt-1">
                                             {!isClinica && (
@@ -435,14 +454,12 @@ export function Dashboard() {
 
                                     <td className="px-6 py-4 font-medium">{trabalho.servico?.nome || 'Personalizado'}</td>
 
-                                    {/* === NOVA COLUNA: ENTRADA === */}
                                     <td className="px-6 py-4">
                                         <span className="text-sm text-slate-500 font-medium">
                                             {formatDate(trabalho.createdAt)}
                                         </span>
                                     </td>
 
-                                    {/* === COLUNA DE ENTREGA (Mantém a lógica do vermelho em caso de atraso) === */}
                                     <td className="px-6 py-4">
                                         <div className={`flex items-center gap-2 font-bold ${isAtrasado(trabalho) ? 'text-red-600' : 'text-slate-600'}`}>
                                             <Calendar className={`h-4 w-4 ${isAtrasado(trabalho) ? 'text-red-500' : 'text-slate-400'}`}/>

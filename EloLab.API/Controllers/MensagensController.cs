@@ -1,8 +1,10 @@
 using EloLab.API.Data;
 using EloLab.API.DTOs;
 using EloLab.API.Models;
+using EloLab.API.Hubs; // <-- IMPORT NOVO
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR; // <-- IMPORT NOVO
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
@@ -14,13 +16,14 @@ namespace EloLab.API.Controllers;
 public class MensagensController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly IHubContext<AppHub> _hubContext; // <-- INJETADO
 
-    public MensagensController(AppDbContext context)
+    public MensagensController(AppDbContext context, IHubContext<AppHub> hubContext) // <-- ADICIONADO NO CONSTRUTOR
     {
         _context = context;
+        _hubContext = hubContext;
     }
 
-    // GET: api/mensagens/trabalho/{id}
     [HttpGet("trabalho/{trabalhoId}")]
     public async Task<IActionResult> GetMensagens(Guid trabalhoId)
     {
@@ -32,21 +35,17 @@ public class MensagensController : ControllerBase
         return Ok(mensagens);
     }
 
-    // POST: api/mensagens
     [HttpPost]
     public async Task<IActionResult> EnviarMensagem([FromBody] CriarMensagemRequest request)
     {
-        // 1. Identificar quem está logado (Do Token)
         var userIdStr = User.FindFirst(ClaimTypes.NameIdentifier)?.Value 
                         ?? User.FindFirst("sub")?.Value;
         
         if (!Guid.TryParse(userIdStr, out var userId)) 
             return Unauthorized();
 
-        // 2. Descobrir o Nome do Remetente (Lab ou Clínica?)
         string nomeRemetente = "Desconhecido";
         
-        // Tenta achar como Laboratório
         var lab = await _context.Laboratorios.FirstOrDefaultAsync(l => l.UsuarioId == userId);
         if (lab != null)
         {
@@ -54,18 +53,16 @@ public class MensagensController : ControllerBase
         }
         else
         {
-            // Se não é Lab, tenta achar como Clínica
             var clinica = await _context.Clinicas.FirstOrDefaultAsync(c => c.UsuarioId == userId);
             if (clinica != null) nomeRemetente = clinica.Nome;
         }
 
-        // 3. Criar a mensagem
         var mensagem = new Mensagem
         {
             TrabalhoId = request.TrabalhoId,
             RemetenteId = userId,
             NomeRemetente = nomeRemetente,
-            Texto = request.Texto, // Agora este campo existe no DTO e no Model!
+            Texto = request.Texto, 
             CreatedAt = DateTime.UtcNow
         };
 
@@ -73,7 +70,6 @@ public class MensagensController : ControllerBase
         await _context.SaveChangesAsync();
 
         // === DISPARAR NOTIFICAÇÃO DE MENSAGEM ===
-        // Substitua 'request.TrabalhoId' pela variável correta que usa no seu controller
         var trabMensagem = await _context.Trabalhos
             .Include(t => t.Clinica)
             .Include(t => t.Laboratorio)
@@ -84,9 +80,11 @@ public class MensagensController : ControllerBase
         {
             var isLab = User.FindFirst("tipo")?.Value == "Laboratorio";
     
-            // Se fui eu (Lab) a enviar, o destinatário é a Clínica, e vice-versa
             var destinatarioId = isLab ? trabMensagem.ClinicaId : trabMensagem.LaboratorioId;
             var remetenteNome = isLab ? trabMensagem.Laboratorio?.Nome : trabMensagem.Clinica?.Nome;
+            
+            // Define o grupo do SignalR para o destinatário correto
+            string grupoSignalR = isLab ? $"Clinica_{destinatarioId}" : $"Lab_{destinatarioId}";
     
             var notifMensagem = new Notificacao
             {
@@ -98,8 +96,12 @@ public class MensagensController : ControllerBase
                 CreatedAt = DateTime.UtcNow,
                 Lida = false
             };
+            
             _context.Notificacoes.Add(notifMensagem);
             await _context.SaveChangesAsync();
+
+            // === A MÁGICA DO SIGNALR ===
+            await _hubContext.Clients.Group(grupoSignalR).SendAsync("NovaNotificacao", notifMensagem);
         }
         
         return Ok(mensagem);

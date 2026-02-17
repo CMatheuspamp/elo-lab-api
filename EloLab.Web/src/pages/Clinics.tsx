@@ -48,11 +48,9 @@ export function Clinics() {
             setUser(userData);
 
             if (userData.tipo === 'Laboratorio') {
-                // 1. Carrega Clínicas
                 const clinicasRes = await api.get('/Clinicas');
                 setClinicas(clinicasRes.data);
 
-                // 2. Carrega Tabelas Disponíveis (para o dropdown)
                 const tabelasRes = await api.get('/TabelasPrecos');
                 setTabelasDisponiveis(tabelasRes.data);
             }
@@ -63,7 +61,6 @@ export function Clinics() {
         }
     }
 
-    // === AÇÃO DE GERAR CONVITE ===
     async function handleGenerateInvite() {
         setGeneratingInvite(true);
         try {
@@ -80,7 +77,6 @@ export function Clinics() {
         }
     }
 
-    // === AÇÃO DE SALVAR CLÍNICA ===
     async function handleAddClinica(e: React.FormEvent) {
         e.preventDefault();
         if (!user) return;
@@ -99,7 +95,6 @@ export function Clinics() {
         }
     }
 
-    // === AÇÃO DE APAGAR / DESVINCULAR ===
     async function handleConfirmDelete() {
         if (!deleteModal.clinica) return;
         try {
@@ -117,12 +112,11 @@ export function Clinics() {
         }
     }
 
-    // === LÓGICA DE ASSOCIAR TABELA ===
     function openTabelaModal(clinica: any) {
         setTabelaModal({
             isOpen: true,
             clinica: clinica,
-            tabelaId: clinica.tabelaPrecoId || ''
+            tabelaId: clinica.tabelaPrecoId || '' // Vazio significa "Sem Tabela" agora
         });
     }
 
@@ -135,10 +129,10 @@ export function Clinics() {
 
             notify.success("Tabela atualizada com sucesso!");
 
-            // Atualiza localmente o nome da tabela
+            // Atualiza localmente o nome da tabela com o novo comportamento
             const nomeNovaTabela = tabelaModal.tabelaId
                 ? tabelasDisponiveis.find(t => t.id === tabelaModal.tabelaId)?.nome
-                : "Padrão";
+                : "Sem Tabela (Catálogo Bloqueado)";
 
             setClinicas(prev => prev.map(c =>
                 c.id === tabelaModal.clinica.id
@@ -157,7 +151,6 @@ export function Clinics() {
         (c.nif && c.nif.includes(busca))
     );
 
-    // Helpers para texto do modal Delete
     const isManual = deleteModal.clinica && !deleteModal.clinica.usuarioId;
     const modalTitle = isManual ? 'Apagar Clínica?' : 'Encerrar Parceria?';
     const modalMessage = isManual
@@ -186,28 +179,47 @@ export function Clinics() {
 
                         <div className="mb-6">
                             <label className="text-xs font-bold text-slate-500 uppercase block mb-2">Selecione a Tabela</label>
-                            <select
-                                value={tabelaModal.tabelaId}
-                                onChange={e => setTabelaModal({ ...tabelaModal, tabelaId: e.target.value })}
-                                className="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-blue-500 bg-white text-slate-700"
-                            >
-                                <option value="">Padrão (Preço Base)</option>
-                                {tabelasDisponiveis.map(t => (
-                                    <option key={t.id} value={t.id}>{t.nome}</option>
-                                ))}
-                            </select>
-                            <p className="text-xs text-slate-400 mt-2">
-                                Se escolher "Padrão", serão usados os preços base dos serviços.
-                            </p>
+
+                            {/* Verificação se existem tabelas criadas */}
+                            {tabelasDisponiveis.length === 0 ? (
+                                <div className="rounded-xl bg-orange-50 border border-orange-100 p-3 text-sm text-orange-700">
+                                    <AlertTriangle className="h-5 w-5 mb-1 text-orange-500" />
+                                    Ainda não criou nenhuma Tabela de Preços. Vá ao menu "Tabelas de Preços" para criar a sua primeira tabela e depois associe-a aqui.
+                                </div>
+                            ) : (
+                                <>
+                                    <select
+                                        value={tabelaModal.tabelaId}
+                                        onChange={e => setTabelaModal({ ...tabelaModal, tabelaId: e.target.value })}
+                                        className="w-full border border-slate-200 rounded-xl p-3 outline-none focus:border-blue-500 bg-white text-slate-700"
+                                    >
+                                        <option value="">-- Bloquear Catálogo (Sem Tabela) --</option>
+                                        {tabelasDisponiveis.map(t => (
+                                            <option key={t.id} value={t.id}>{t.nome}</option>
+                                        ))}
+                                    </select>
+                                    <p className="text-xs text-slate-400 mt-2">
+                                        Ao selecionar "Sem Tabela", esta clínica não conseguirá ver os seus serviços nem fazer novos pedidos.
+                                    </p>
+                                </>
+                            )}
                         </div>
 
                         <div className="flex gap-3">
                             <button onClick={() => setTabelaModal({ isOpen: false, clinica: null, tabelaId: '' })} className="flex-1 rounded-xl bg-slate-100 py-2.5 font-bold text-slate-600 hover:bg-slate-200 transition">Cancelar</button>
-                            <button onClick={handleSaveTabela} className="flex-1 rounded-xl py-2.5 font-bold text-white shadow-lg bg-blue-600 hover:bg-blue-700 transition">Salvar</button>
+                            <button
+                                onClick={handleSaveTabela}
+                                disabled={tabelasDisponiveis.length === 0 && tabelaModal.tabelaId === ''} // Evita salvar o vazio se não houver tabelas
+                                className="flex-1 rounded-xl py-2.5 font-bold text-white shadow-lg bg-blue-600 hover:bg-blue-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                Salvar
+                            </button>
                         </div>
                     </div>
                 </div>
             )}
+
+            {/* === O RESTO DO COMPONENTE CONTINUA IGUAL ABAIXO... === */}
 
             {/* === MODAL DE CONFIRMAÇÃO (DELETE) === */}
             {deleteModal.isOpen && (
@@ -321,15 +333,24 @@ export function Clinics() {
                                     <div className="flex items-center gap-2"><MapPin className="h-3 w-3 text-slate-400"/> <span className="truncate max-w-[150px] block">{c.endereco || <span className="text-slate-300 italic text-xs">Sem Morada</span>}</span></div>
                                 </td>
 
-                                {/* COLUNA TABELA */}
+                                {/* COLUNA TABELA - AGORA COM A NOVA REGRA E ESTILO MAIS ALERTA SE ESTIVER BLOQUEADA */}
                                 <td className="px-6 py-4 hidden sm:table-cell">
                                     <button
                                         onClick={() => openTabelaModal(c)}
-                                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600 transition group/tabela"
+                                        className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition group/tabela ${
+                                            !c.tabelaPrecoId
+                                                ? 'bg-orange-50 border-orange-200 text-orange-700 hover:bg-orange-100'
+                                                : 'bg-slate-50 border-slate-200 hover:bg-blue-50 hover:border-blue-200 hover:text-blue-600'
+                                        }`}
                                     >
-                                        <ScrollText className="h-3.5 w-3.5 text-slate-400 group-hover/tabela:text-blue-500" />
+                                        {!c.tabelaPrecoId ? (
+                                            <AlertTriangle className="h-3.5 w-3.5 text-orange-500" />
+                                        ) : (
+                                            <ScrollText className="h-3.5 w-3.5 text-slate-400 group-hover/tabela:text-blue-500" />
+                                        )}
+
                                         <span className="font-medium text-xs">
-                                            {c.nomeTabela || "Padrão"}
+                                            {c.nomeTabela || "Sem Tabela (Catálogo Bloqueado)"}
                                         </span>
                                     </button>
                                 </td>

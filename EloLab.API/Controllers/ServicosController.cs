@@ -65,7 +65,6 @@ public class ServicosController : ControllerBase
             // Verifica se o ID da clínica na URL bate com o ID da clínica no Token
             if (string.IsNullOrEmpty(clinicaIdToken) || clinicaIdToken.ToLower() != clinicaId.ToString().ToLower())
             {
-                // DEBUG: Para você ver no terminal se der erro de novo
                 Console.WriteLine($"ERRO 401: Token diz ser clinica {clinicaIdToken}, mas URL pede {clinicaId}");
                 return Unauthorized("Você não tem permissão para acessar dados desta clínica.");
             }
@@ -81,7 +80,6 @@ public class ServicosController : ControllerBase
         else if (userType == "Laboratorio")
         {
             // O laboratório da URL (vínculo) tem de ser o mesmo do Token
-            // Nota: Se o Lab está a ver a clínica X, ele quer ver o vínculo consigo mesmo.
             laboratorioId = Guid.Parse(labIdToken!); 
         }
         else
@@ -99,10 +97,9 @@ public class ServicosController : ControllerBase
             .Where(lc => lc.ClinicaId == clinicaId && lc.LaboratorioId == laboratorioId && lc.Ativo)
             .FirstOrDefaultAsync();
 
-        // Se não achou vínculo (ex: acabou de selecionar o lab e a internet falhou ou não são parceiros)
+        // Se não achou vínculo, ou se a internet falhou
         if (vinculo == null) 
         {
-            // Retorna lista vazia para não quebrar o frontend
             return Ok(new List<object>()); 
         }
 
@@ -128,24 +125,11 @@ public class ServicosController : ControllerBase
             return Ok(servicosRestritos);
         }
 
-        // === CENÁRIO B: NÃO TEM TABELA (Lista Padrão do Lab) ===
-        var todosServicos = await _context.Servicos
-            .Where(s => s.LaboratorioId == vinculo.LaboratorioId && s.Ativo)
-            .OrderBy(s => s.Nome)
-            .Select(s => new 
-            {
-                Id = s.Id,
-                Nome = s.Nome,
-                Material = s.Material,
-                Descricao = s.Descricao,
-                PrazoDiasUteis = s.PrazoDiasUteis,
-                FotoUrl = s.FotoUrl,
-                PrecoBase = s.PrecoBase, // Preço Original
-                IsTabela = false
-            })
-            .ToListAsync();
-
-        return Ok(todosServicos);
+        // === CENÁRIO B: NÃO TEM TABELA (AQUI ESTÁ A ALTERAÇÃO) ===
+        // Em vez de devolver o catálogo padrão, devolvemos uma lista vazia.
+        // O laboratório tem de atribuir expressamente uma tabela a esta clínica para ela ver os preços.
+        
+        return Ok(new List<object>());
     }
     
     // =================================================================================

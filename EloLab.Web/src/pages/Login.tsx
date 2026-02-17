@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import { Lock, Mail, Loader2, ArrowRight, Activity } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { notify } from '../utils/notify';
+import { signalRService } from "../services/signalRService.ts";
 
 export function Login() {
     const [email, setEmail] = useState('');
@@ -22,9 +23,9 @@ export function Login() {
 
             // 2. Guarda na memória do navegador
             localStorage.setItem('elolab_token', token);
-            localStorage.setItem('elolab_user_id', usuarioId); // Adicionado por precaução
+            localStorage.setItem('elolab_user_id', usuarioId);
             localStorage.setItem('elolab_user_type', tipo);
-            localStorage.setItem('elolab_user_name', nome);    // Adicionado por precaução
+            localStorage.setItem('elolab_user_name', nome);
             localStorage.setItem('elolab_user_color', corPrimaria || '#2563EB');
 
             if (logoUrl) {
@@ -35,6 +36,10 @@ export function Login() {
 
             // 3. Define o Token no Axios para os próximos pedidos
             api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+            // === NOVIDADE: LIGA O TÚNEL SIGNALR IMEDIATAMENTE APÓS O LOGIN ===
+            // Assim não precisamos de fazer F5 (refresh) para o túnel apanhar o novo token!
+            signalRService.startConnection();
 
             // 4. Lógica de Convite da Clínica
             const tokenConvite = localStorage.getItem('elolab_token_convite');

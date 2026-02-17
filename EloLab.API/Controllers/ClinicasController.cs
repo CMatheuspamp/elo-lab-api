@@ -34,7 +34,7 @@ public class ClinicasController : ControllerBase
             var clinicas = await _context.LaboratorioClinicas
                 .Where(lc => lc.LaboratorioId == labGuid && lc.Ativo)
                 .Include(lc => lc.Clinica)
-                .Include(lc => lc.TabelaPreco) // Traz a tabela associada
+                .Include(lc => lc.TabelaPreco) 
                 .Select(lc => new 
                 {
                     Id = lc.Clinica.Id,
@@ -45,9 +45,10 @@ public class ClinicasController : ControllerBase
                     Endereco = lc.Clinica.Endereco,
                     UsuarioId = lc.Clinica.UsuarioId,
                     
-                    // Dados da Tabela de Preços
                     TabelaPrecoId = lc.TabelaPrecoId,
-                    NomeTabela = lc.TabelaPreco == null ? "Padrão" : lc.TabelaPreco.Nome
+                    
+                    // ALTERAÇÃO AQUI: Se for null, dizemos a verdade em vez de fingir que é "Padrão"
+                    NomeTabela = lc.TabelaPreco == null ? "Sem Tabela (Catálogo Bloqueado)" : lc.TabelaPreco.Nome
                 })
                 .OrderBy(c => c.Nome)
                 .ToListAsync();

@@ -51,7 +51,7 @@ else
 }
 
 // ==============================================================================
-// 3. AUTENTICAÇÃO E JWT
+// 3. AUTENTICAÇÃO E JWT (COM SUPORTE A SIGNALR)
 // ==============================================================================
 var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY") 
              ?? builder.Configuration["Jwt:Key"]
@@ -61,22 +61,37 @@ var jwtKey = Environment.GetEnvironmentVariable("JWT_KEY")
 var key = Encoding.ASCII.GetBytes(jwtKey);
 
 builder.Services.AddAuthentication(x =>
-{
-    x.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
-    x.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
-})
-.AddJwtBearer(x =>
-{
-    x.RequireHttpsMetadata = false;
-    x.SaveToken = true;
-    x.TokenValidationParameters = new TokenValidationParameters
     {
-        ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(key),
-        ValidateIssuer = false,
-        ValidateAudience = false
-    };
-});
+        x.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+        x.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+    })
+    .AddJwtBearer(x =>
+    {
+        x.RequireHttpsMetadata = false;
+        x.SaveToken = true;
+        x.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(key),
+            ValidateIssuer = false,
+            ValidateAudience = false
+        };
+
+        // NOVIDADE: Permite que o SignalR passe o token pela URL
+        x.Events = new JwtBearerEvents
+        {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                var path = context.HttpContext.Request.Path;
+                if (!string.IsNullOrEmpty(accessToken) && path.StartsWithSegments("/hubs"))
+                {
+                    context.Token = accessToken;
+                }
+                return Task.CompletedTask;
+            }
+        };
+    });
 
 // ==============================================================================
 // 4. CORS (BLINDAGEM DE PRODUÇÃO)
@@ -92,11 +107,14 @@ builder.Services.AddCors(options =>
             "http://localhost:5173"
         )
         .AllowAnyMethod()
-        .AllowAnyHeader();
+        .AllowAnyHeader()
+        .AllowCredentials(); // <--- OBRIGATÓRIO PARA O SIGNALR FUNCIONAR!
     });
 });
 
-// 5. Controllers e JSON
+// ==============================================================================
+// 5. CONTROLLERS, JSON E SIGNALR
+// ==============================================================================
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
     {
@@ -104,7 +122,12 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
     });
 
-// 6. Swagger
+// ADICIONA O SERVIÇO DE TEMPO REAL (SIGNALR)
+builder.Services.AddSignalR(); 
+
+// ==============================================================================
+// 6. SWAGGER
+// ==============================================================================
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
@@ -168,6 +191,9 @@ app.UseStaticFiles(new StaticFileOptions
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+// MAPEIA A PORTA DE ENTRADA DO TÚNEL TEMPO-REAL
+app.MapHub<EloLab.API.Hubs.AppHub>("/hubs/app");
 
 var port = Environment.GetEnvironmentVariable("PORT") ?? "8080";
 app.Run($"http://0.0.0.0:{port}");

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
@@ -20,8 +21,21 @@ import { ResetPassword } from './pages/ResetPassword';
 import { AuthListener } from './components/AuthListener';
 import { PendingApproval } from "./pages/PendingApproval.tsx";
 import { Toaster } from 'react-hot-toast';
+import { signalRService } from './services/signalRService'; // <-- IMPORT DO TÚNEL
 
 function App() {
+
+    // === TÚNEL EM TEMPO REAL (SIGNALR) ===
+    useEffect(() => {
+        // Tenta ligar o túnel quando a app é aberta
+        signalRService.startConnection();
+
+        // Desliga o túnel para não gastar memória se o utilizador fechar o site
+        return () => {
+            signalRService.stopConnection();
+        };
+    }, []);
+
     return (
         <BrowserRouter>
             <AuthListener />

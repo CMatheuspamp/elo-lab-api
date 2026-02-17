@@ -1,8 +1,10 @@
 using EloLab.API.Data;
 using EloLab.API.DTOs;
 using EloLab.API.Models;
+using EloLab.API.Hubs; // <-- IMPORT NOVO
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR; // <-- IMPORT NOVO
 using Microsoft.EntityFrameworkCore;
 using System.Security.Claims;
 
@@ -14,15 +16,14 @@ namespace EloLab.API.Controllers;
 public class TrabalhosController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly IHubContext<AppHub> _hubContext; // <-- INJETADO
 
-    public TrabalhosController(AppDbContext context)
+    public TrabalhosController(AppDbContext context, IHubContext<AppHub> hubContext) // <-- ADICIONADO NO CONSTRUTOR
     {
         _context = context;
+        _hubContext = hubContext;
     }
 
-    // =============================================================
-    // HELPER DE SEGURANÇA: Verifica se o utilizador logado é dono deste trabalho
-    // =============================================================
     private bool TemPermissaoNoTrabalho(Trabalho trabalho)
     {
         var labIdClaim = User.FindFirst("laboratorioId")?.Value;
@@ -34,9 +35,6 @@ public class TrabalhosController : ControllerBase
         return isDonoLab || isDonoClinica;
     }
 
-    // =============================================================
-    // 1. LISTAGEM INTELIGENTE (Dashboard)
-    // =============================================================
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Trabalho>>> GetTrabalhos()
     {
@@ -66,9 +64,6 @@ public class TrabalhosController : ControllerBase
         return Ok(new List<Trabalho>());
     }
 
-    // =============================================================
-    // 2. CRIAR PEDIDO
-    // =============================================================
     [HttpPost]
     public async Task<IActionResult> CriarTrabalho([FromBody] CriarTrabalhoRequest request)
     {
@@ -112,7 +107,7 @@ public class TrabalhosController : ControllerBase
             var novaNotificacao = new Notificacao
             {
                 Id = Guid.NewGuid(),
-                UsuarioId = request.LaboratorioId,
+                UsuarioId = request.LaboratorioId, // O Lab recebe
                 Titulo = "Novo Pedido Recebido 📦",
                 Texto = $"{clinicaNotif?.Nome} enviou um novo trabalho para {request.PacienteNome} ({(servicoNotif?.Nome ?? "Personalizado")}).",
                 LinkAction = $"/trabalhos/{trabalho.Id}",
@@ -121,14 +116,14 @@ public class TrabalhosController : ControllerBase
             };
             _context.Notificacoes.Add(novaNotificacao);
             await _context.SaveChangesAsync();
+
+            // === A MÁGICA DO SIGNALR ===
+            await _hubContext.Clients.Group($"Lab_{request.LaboratorioId}").SendAsync("NovaNotificacao", novaNotificacao);
         }
 
         return Ok(trabalho);
     }
     
-    // =============================================================
-    // 3. DETALHES
-    // =============================================================
     [HttpGet("{id}")]
     public async Task<ActionResult<Trabalho>> GetTrabalho(Guid id)
     {
@@ -139,23 +134,17 @@ public class TrabalhosController : ControllerBase
             .FirstOrDefaultAsync(t => t.Id == id);
 
         if (trabalho == null) return NotFound();
-
-        // SEGURANÇA MÁXIMA: Apenas os envolvidos podem ver os detalhes!
         if (!TemPermissaoNoTrabalho(trabalho)) return Forbid();
 
         return Ok(trabalho);
     }
     
-    // =============================================================
-    // 4. MUDAR STATUS
-    // =============================================================
     [HttpPatch("{trabalhoId}/status")]
     public async Task<IActionResult> AtualizarStatus(Guid trabalhoId, [FromBody] string novoStatus)
     {
         var trabalho = await _context.Trabalhos.FindAsync(trabalhoId);
         if (trabalho == null) return NotFound("Trabalho não encontrado.");
 
-        // SEGURANÇA MÁXIMA: Apenas o Laboratório dono deste trabalho pode mudar o status
         var labIdClaim = User.FindFirst("laboratorioId")?.Value;
         if (trabalho.LaboratorioId.ToString() != labIdClaim) return Forbid();
 
@@ -172,7 +161,7 @@ public class TrabalhosController : ControllerBase
                 var notificacaoStatus = new Notificacao
                 {
                     Id = Guid.NewGuid(),
-                    UsuarioId = trabCompleto.ClinicaId,
+                    UsuarioId = trabCompleto.ClinicaId, // A Clínica recebe
                     Titulo = "Status Atualizado ✨",
                     Texto = $"O trabalho de {trabCompleto.PacienteNome} ({(trabCompleto.Servico?.Nome ?? "Personalizado")}) mudou para: {novoStatus}",
                     LinkAction = $"/trabalhos/{trabCompleto.Id}",
@@ -181,22 +170,21 @@ public class TrabalhosController : ControllerBase
                 };
                 _context.Notificacoes.Add(notificacaoStatus);
                 await _context.SaveChangesAsync();
+
+                // === A MÁGICA DO SIGNALR ===
+                await _hubContext.Clients.Group($"Clinica_{trabCompleto.ClinicaId}").SendAsync("NovaNotificacao", notificacaoStatus);
             }
         }
 
         return Ok(new { mensagem = "Status atualizado", novoStatus = trabalho.Status });
     }
     
-    // =============================================================
-    // 5. UPLOAD DE ANEXOS (3D, Fotos, etc)
-    // =============================================================
     [HttpPost("{id}/anexo")]
     public async Task<IActionResult> UploadAnexo(Guid id, IFormFile arquivo)
     {
         var trabalho = await _context.Trabalhos.FindAsync(id);
         if (trabalho == null) return NotFound("Trabalho não encontrado.");
 
-        // SEGURANÇA MÁXIMA: Só pode enviar arquivos se fizer parte do trabalho
         if (!TemPermissaoNoTrabalho(trabalho)) return Forbid();
 
         if (arquivo == null || arquivo.Length == 0) return BadRequest("Nenhum arquivo enviado.");
@@ -206,7 +194,6 @@ public class TrabalhosController : ControllerBase
         
         if (!permitidos.Contains(extensao)) return BadRequest($"Formato {extensao} não suportado.");
 
-        // ATENÇÃO: LIGAÇÃO AO COFRE (PERSISTENT DISK)
         var pastaUploads = Environment.GetEnvironmentVariable("RENDER_UPLOADS_PATH") 
                            ?? Path.Combine(Directory.GetCurrentDirectory(), "uploads");
                    
@@ -247,7 +234,6 @@ public class TrabalhosController : ControllerBase
     [HttpGet("{id}/anexos")]
     public async Task<IActionResult> GetAnexos(Guid id)
     {
-        // 1. Validar se o trabalho existe e se o user tem permissão
         var trabalho = await _context.Trabalhos.FindAsync(id);
         if (trabalho == null) return NotFound();
         if (!TemPermissaoNoTrabalho(trabalho)) return Forbid();
@@ -260,16 +246,12 @@ public class TrabalhosController : ControllerBase
         return Ok(anexos);
     }
     
-    // =============================================================
-    // 6. DELETAR TRABALHO (VERSÃO ROBUSTA E SEGURA)
-    // =============================================================
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteTrabalho(Guid id)
     {
         var trabalho = await _context.Trabalhos.FindAsync(id);
         if (trabalho == null) return NotFound();
 
-        // SEGURANÇA MÁXIMA: Apenas quem está no trabalho o pode apagar
         if (!TemPermissaoNoTrabalho(trabalho)) return Forbid();
 
         try 
@@ -277,7 +259,6 @@ public class TrabalhosController : ControllerBase
             var mensagens = await _context.Mensagens.Where(m => m.TrabalhoId == id).ToListAsync();
             if (mensagens.Any()) _context.Mensagens.RemoveRange(mensagens);
 
-            // --- INÍCIO DA LIMPEZA INTELIGENTE DE DISCO FÍSICO ---
             var pastaUploads = Environment.GetEnvironmentVariable("RENDER_UPLOADS_PATH") 
                                ?? Path.Combine(Directory.GetCurrentDirectory(), "uploads");
 
@@ -291,7 +272,6 @@ public class TrabalhosController : ControllerBase
                         var nomeFicheiro = Path.GetFileName(anexo.Url);
                         var caminhoFisico = Path.Combine(pastaUploads, nomeFicheiro);
                         
-                        // Apaga o ficheiro do disco para poupar espaço no servidor!
                         if (System.IO.File.Exists(caminhoFisico))
                         {
                             System.IO.File.Delete(caminhoFisico);
@@ -301,7 +281,6 @@ public class TrabalhosController : ControllerBase
                 _context.Anexos.RemoveRange(anexos);
             }
             
-            // Garante que o arquivo principal também é apagado fisicamente
             if (!string.IsNullOrEmpty(trabalho.ArquivoUrl))
             {
                 var nomeArqTrabalho = Path.GetFileName(trabalho.ArquivoUrl);
@@ -311,7 +290,6 @@ public class TrabalhosController : ControllerBase
                     System.IO.File.Delete(caminhoArqFisico);
                 }
             }
-            // --- FIM DA LIMPEZA DE DISCO FÍSICO ---
 
             _context.Trabalhos.Remove(trabalho);
             await _context.SaveChangesAsync();
@@ -329,16 +307,12 @@ public class TrabalhosController : ControllerBase
         }
     }
     
-    // =============================================================
-    // 7. ATUALIZAR PAGAMENTO
-    // =============================================================
     [HttpPatch("{id}/pagamento")]
     public async Task<IActionResult> AtualizarPagamento(Guid id, [FromBody] AtualizarPagamentoRequest request)
     {
         var trabalho = await _context.Trabalhos.FindAsync(id);
         if (trabalho == null) return NotFound(new { mensagem = "Trabalho não encontrado." });
 
-        // SEGURANÇA MÁXIMA: Apenas o laboratório que fez o trabalho pode dizer se foi pago!
         var labIdClaim = User.FindFirst("laboratorioId")?.Value;
         if (trabalho.LaboratorioId.ToString() != labIdClaim) return Forbid();
 
@@ -348,22 +322,17 @@ public class TrabalhosController : ControllerBase
         return Ok(new { mensagem = "Status financeiro atualizado com sucesso.", pago = trabalho.Pago });
     }
     
-    // =============================================================
-    // 8. DELETAR UM ANEXO ESPECÍFICO (FÍSICO E BD)
-    // =============================================================
     [HttpDelete("anexo/{anexoId}")]
     public async Task<IActionResult> DeleteAnexoUnico(Guid anexoId)
     {
         var anexo = await _context.Anexos.Include(a => a.Trabalho).FirstOrDefaultAsync(a => a.Id == anexoId);
         if (anexo == null) return NotFound();
 
-        // Só quem tem permissão no trabalho pode apagar o arquivo
         if (!TemPermissaoNoTrabalho(anexo.Trabalho)) return Forbid();
 
         var pastaUploads = Environment.GetEnvironmentVariable("RENDER_UPLOADS_PATH") 
                            ?? Path.Combine(Directory.GetCurrentDirectory(), "uploads");
 
-        // Apaga o ficheiro do Disco Físico
         if (!string.IsNullOrEmpty(anexo.Url))
         {
             var nomeFicheiro = Path.GetFileName(anexo.Url);
@@ -374,7 +343,6 @@ public class TrabalhosController : ControllerBase
             }
         }
 
-        // Apaga da Base de Dados
         _context.Anexos.Remove(anexo);
         await _context.SaveChangesAsync();
 

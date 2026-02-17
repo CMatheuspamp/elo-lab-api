@@ -6,9 +6,11 @@ using System.Text;
 using System.Threading.Tasks;
 using EloLab.API.Data;
 using EloLab.API.DTOs;
-using EloLab.API.Models; // Necessário para encontrar as classes Usuario e Laboratorio
-using Microsoft.AspNetCore.Authorization; // Necessário para o [AllowAnonymous] e [Authorize]
+using EloLab.API.Models; 
+using EloLab.API.Hubs; // <--- NOVO IMPORT PARA O SIGNALR
+using Microsoft.AspNetCore.Authorization; 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR; // <--- NOVO IMPORT PARA O SIGNALR
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
@@ -22,12 +24,14 @@ public class AuthController : ControllerBase
     private readonly Supabase.Client _supabaseClient;
     private readonly AppDbContext _context;
     private readonly IConfiguration _configuration;
+    private readonly IHubContext<AppHub> _hubContext; // <--- INJETÁMOS O MEGAFONE AQUI
 
-    public AuthController(Supabase.Client supabaseClient, AppDbContext context, IConfiguration configuration)
+    public AuthController(Supabase.Client supabaseClient, AppDbContext context, IConfiguration configuration, IHubContext<AppHub> hubContext)
     {
         _supabaseClient = supabaseClient;
         _context = context;
         _configuration = configuration;
+        _hubContext = hubContext; // <--- GUARDÁMOS O MEGAFONE AQUI
     }
 
     [HttpPost("login")]
@@ -36,7 +40,6 @@ public class AuthController : ControllerBase
     {
         try
         {
-            // 1. Autenticar no Supabase
             var session = await _supabaseClient.Auth.SignIn(request.Email, request.Password);
 
             if (session == null || session.User == null)
@@ -45,14 +48,12 @@ public class AuthController : ControllerBase
             if (!Guid.TryParse(session.User.Id, out var userId))
                 return BadRequest(new { erro = "ID de usuário inválido." });
 
-            // 2. Descobrir QUEM é este usuário
             string tipo = "Desconhecido";
             string nome = session.User.Email ?? "Sem Nome";
             Guid? laboratorioId = null;
             Guid? clinicaId = null;
             bool isAtivo = false;
             
-            // Variáveis de aparência
             string cor = "#2563EB"; 
             string? logo = null;
 
@@ -64,7 +65,6 @@ public class AuthController : ControllerBase
                 laboratorioId = lab.Id;
                 isAtivo = lab.Ativo;
                 
-                // Carrega a aparência do Laboratório
                 cor = lab.CorPrimaria;
                 logo = lab.LogoUrl;
             }
@@ -82,11 +82,9 @@ public class AuthController : ControllerBase
             
             if (tipo == "Laboratorio" && !isAtivo)
             {
-                // O Backend recusa gerar o token e avisa o Frontend do motivo
                 return StatusCode(403, new { erro = "PENDENTE", mensagem = "A conta do laboratório está em análise." });
             }
 
-            // 3. Criar Token
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
@@ -106,7 +104,6 @@ public class AuthController : ControllerBase
             
             var supaUrl = Environment.GetEnvironmentVariable("SUPABASE_URL") ?? _configuration["SupabaseSettings:Url"];
 
-            
             var tokenDescriptor = new SecurityTokenDescriptor
             {
                 Subject = new ClaimsIdentity(claims),
@@ -120,7 +117,6 @@ public class AuthController : ControllerBase
             var token = tokenHandler.CreateToken(tokenDescriptor);
             var jwtString = tokenHandler.WriteToken(token);
 
-            // 4. Retorno turbinado com aparência
             return Ok(new 
             { 
                 token = jwtString,
@@ -161,13 +157,11 @@ public class AuthController : ControllerBase
     
     [HttpPost("register/laboratorio")]
     [AllowAnonymous]
-    // NOTA: Se o teu arquivo ainda se chamar RegistroLaboratorioDto, adiciona o "Dto" aqui no parâmetro
     public async Task<IActionResult> RegisterLaboratorio([FromBody] RegistroLaboratorioDto request)
     {
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
-        // 1. Criar a conta de autenticação no Supabase Auth
         Supabase.Gotrue.Session session;
         try
         {
@@ -184,34 +178,26 @@ public class AuthController : ControllerBase
         if (!Guid.TryParse(session.User.Id, out var supabaseUserId))
             return BadRequest(new { mensagem = "ID de usuário inválido gerado pelo Supabase." });
 
-        // 2. Salvar os dados na tabela Laboratorios
         using var transaction = await _context.Database.BeginTransactionAsync();
         
         try
         {
-            // === MÁGICA DO SLUG CORRIGIDA ===
-            // Pega o nome, converte para minúsculas e troca espaços por traços
             string nomeLimpo = request.NomeLaboratorio ?? "lab";
             string baseSlug = nomeLimpo.ToLower().Replace(" ", "-");
-            
-            // Remove qualquer caractere que não seja letra, número ou traço
             baseSlug = System.Text.RegularExpressions.Regex.Replace(baseSlug, @"[^a-z0-9\-]", "");
-            
-            // Adiciona 6 caracteres únicos no fim para garantir que nunca há duplicados no banco
             string slugUnico = $"{baseSlug}-{Guid.NewGuid().ToString().Substring(0, 6)}";
-            // ==================================
 
             var novoLaboratorio = new Laboratorio
             {
                 Id = Guid.NewGuid(),
                 UsuarioId = supabaseUserId,
                 Nome = request.NomeLaboratorio,
-                Slug = slugUnico, // <--- O Slug vai aqui!
+                Slug = slugUnico, 
                 EmailContato = request.Email,
                 Nif = request.Nif,
                 Telefone = request.Telefone,
-                Rua = request.Rua,                 // ADICIONAR ESTA LINHA
-                Cidade = request.Cidade,           // ADICIONAR ESTA LINHA
+                Rua = request.Rua,                 
+                Cidade = request.Cidade,           
                 CodigoPostal = request.CodigoPostal,
                 CorPrimaria = "#2563EB", 
                 StatusAssinatura = "Pendente",
@@ -235,34 +221,30 @@ public class AuthController : ControllerBase
     }
     
     [HttpPost("convite/gerar")]
-    [Authorize] // Só labs logados podem gerar convites
+    [Authorize] 
     public async Task<IActionResult> GerarConviteEndpoint([FromBody] GerarConvite request)
     {
-        // 1. Descobrir qual é o Laboratório que está a fazer o pedido
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userId) || !Guid.TryParse(userId, out var uid))
             return Unauthorized(new { mensagem = "Usuário não autenticado." });
 
         var lab = await _context.Laboratorios.FirstOrDefaultAsync(l => l.UsuarioId == uid);
         if (lab == null)
-            return Forbid(); // Se não for laboratório, não pode gerar convite
+            return Forbid(); 
 
-        // 2. Criar o convite no banco
         var novoConvite = new ConviteClinica
         {
             Id = Guid.NewGuid(),
             LaboratorioId = lab.Id,
             EmailConvidado = request.EmailConvidado,
             DataCriacao = DateTime.UtcNow,
-            DataExpiracao = DateTime.UtcNow.AddDays(7), // Expira em 7 dias
+            DataExpiracao = DateTime.UtcNow.AddDays(7), 
             Usado = false
         };
 
         _context.ConvitesClinicas.Add(novoConvite);
         await _context.SaveChangesAsync();
 
-        // 3. Devolver o link pronto para o Frontend usar
-        // Dica: Substitua 'localhost:5173' pela variável de ambiente do Frontend no futuro
         var frontendUrl = _configuration["FrontendUrl"] ?? Environment.GetEnvironmentVariable("FRONTEND_URL") ?? "http://localhost:5173";
         var linkFrontend = $"{frontendUrl}/registro-clinica?token={novoConvite.Id}";
 
@@ -280,7 +262,6 @@ public class AuthController : ControllerBase
     {
         if (!ModelState.IsValid) return BadRequest(ModelState);
 
-        // 1. Se veio um Token, vamos VALIDAR antes de criar a conta
         ConviteClinica? convite = null;
         if (request.TokenConvite.HasValue)
         {
@@ -291,7 +272,6 @@ public class AuthController : ControllerBase
                 return BadRequest(new { mensagem = "Convite inválido, expirado ou já utilizado." });
         }
 
-        // 2. Criar conta no Supabase Auth
         Supabase.Gotrue.Session session;
         try { session = await _supabaseClient.Auth.SignUp(request.Email, request.Senha); }
         catch (Exception ex) { return BadRequest(new { mensagem = $"Erro no Auth: {ex.Message}" }); }
@@ -302,11 +282,9 @@ public class AuthController : ControllerBase
         if (!Guid.TryParse(session.User.Id, out var supabaseUserId))
             return BadRequest(new { mensagem = "Erro de ID." });
 
-        // 3. Gravar no Banco de Dados (Transação)
         using var transaction = await _context.Database.BeginTransactionAsync();
         try
         {
-            // Cria a Clínica
             var novaClinica = new Clinica
             {
                 Id = Guid.NewGuid(),
@@ -315,14 +293,13 @@ public class AuthController : ControllerBase
                 EmailContato = request.Email,
                 Nif = request.Nif,
                 Telefone = request.Telefone,
-                Rua = request.Rua,                 // ADICIONAR ESTA LINHA
-                Cidade = request.Cidade,           // ADICIONAR ESTA LINHA
+                Rua = request.Rua,                 
+                Cidade = request.Cidade,           
                 CodigoPostal = request.CodigoPostal,
                 CreatedAt = DateTime.UtcNow
             };
             _context.Clinicas.Add(novaClinica);
 
-            // 4. A MÁGICA: Se tinha convite válido, cria o Vínculo!
             if (convite != null)
             {
                 var novoVinculo = new LaboratorioClinica
@@ -333,13 +310,22 @@ public class AuthController : ControllerBase
                 };
                 _context.LaboratorioClinicas.Add(novoVinculo);
 
-                // Queimar o convite para não ser usado de novo
                 convite.Usado = true;
                 _context.ConvitesClinicas.Update(convite);
             }
 
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
+
+            // === A MÁGICA DO SIGNALR AQUI: AVISA O LABORATÓRIO SE HOUVE CONVITE ===
+            if (convite != null)
+            {
+                await _hubContext.Clients.Group($"Lab_{convite.LaboratorioId}").SendAsync("NovaNotificacao", new {
+                    titulo = "Novo Parceiro Registado!",
+                    mensagem = $"A clínica {novaClinica.Nome} acabou de criar conta e aceitou o seu convite.",
+                    tipo = "convite"
+                });
+            }
 
             return StatusCode(201, new { mensagem = "Clínica registada com sucesso." });
         }
@@ -352,33 +338,29 @@ public class AuthController : ControllerBase
     }
     
     [HttpPost("convite/aceitar/{token}")]
-    [Authorize] // A clínica tem de estar logada!
+    [Authorize] 
     public async Task<IActionResult> AceitarConvite(Guid token)
     {
         var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (string.IsNullOrEmpty(userId) || !Guid.TryParse(userId, out var uid))
             return Unauthorized();
 
-        // 1. Descobrir se o usuário logado é realmente uma clínica
         var clinica = await _context.Clinicas.FirstOrDefaultAsync(c => c.UsuarioId == uid);
         if (clinica == null)
             return BadRequest(new { mensagem = "Apenas clínicas podem aceitar este convite." });
 
-        // 2. Validar o Convite
         var convite = await _context.ConvitesClinicas
             .FirstOrDefaultAsync(c => c.Id == token && !c.Usado && c.DataExpiracao > DateTime.UtcNow);
 
         if (convite == null)
             return BadRequest(new { mensagem = "Convite inválido, expirado ou já utilizado." });
 
-        // 3. Verificar se o vínculo JÁ EXISTE (para não duplicar)
         var vinculoExiste = await _context.LaboratorioClinicas
             .AnyAsync(lc => lc.LaboratorioId == convite.LaboratorioId && lc.ClinicaId == clinica.Id);
 
         if (vinculoExiste)
             return BadRequest(new { mensagem = "Você já está vinculado a este laboratório." });
 
-        // 4. Criar o Vínculo e queimar o convite
         var novoVinculo = new LaboratorioClinica
         {
             Id = Guid.NewGuid(),
@@ -393,6 +375,13 @@ public class AuthController : ControllerBase
 
         await _context.SaveChangesAsync();
 
+        // === A MÁGICA DO SIGNALR AQUI: AVISA O LABORATÓRIO ===
+        await _hubContext.Clients.Group($"Lab_{convite.LaboratorioId}").SendAsync("NovaNotificacao", new {
+            titulo = "Novo Vínculo!",
+            mensagem = $"A clínica {clinica.Nome} acabou de aceitar o seu convite.",
+            tipo = "convite"
+        });
+
         return Ok(new { mensagem = "Vínculo criado com sucesso! Agora você faz parte deste laboratório." });
     }
     
@@ -405,15 +394,12 @@ public class AuthController : ControllerBase
 
         try
         {
-            // Pede ao Supabase Auth para enviar o e-mail de recuperação
             await _supabaseClient.Auth.ResetPasswordForEmail(email);
-
             return Ok(new { mensagem = "Se o e-mail existir no nosso sistema, receberá um link de recuperação em breve." });
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Erro ao pedir recuperação de senha: {ex.Message}");
-            // Devolvemos sempre OK para não permitir que hackers descubram quais e-mails estão registados
             return Ok(new { mensagem = "Se o e-mail existir no nosso sistema, receberá um link de recuperação em breve." });
         }
     }
