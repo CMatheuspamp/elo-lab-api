@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
     LayoutDashboard, PlusCircle, Building2,
-    Tag, UserCircle, LogOut, Users, Bell, ScrollText, CalendarDays, Wallet
+    Tag, UserCircle, LogOut, Users, Bell, ScrollText, CalendarDays, Wallet,
+    ShieldAlert
 } from 'lucide-react';
 import { api } from '../services/api';
 
@@ -14,9 +15,11 @@ export function Sidebar() {
     const primaryColor = localStorage.getItem('elolab_user_color') || '#2563EB';
     const logoUrl = localStorage.getItem('elolab_user_logo');
 
+    // === A CHAVE DO MESTRE ===
+    const isSuperAdmin = localStorage.getItem('elolab_is_admin') === 'true';
+
     const [unreadCount, setUnreadCount] = useState(0);
 
-    // Função centralizada para buscar o contador real
     async function fetchInitialCount() {
         try {
             const res = await api.get('/Notificacoes');
@@ -28,25 +31,14 @@ export function Sidebar() {
     }
 
     useEffect(() => {
-        // === PEDIR PERMISSÃO PARA NOTIFICAÇÕES DO SISTEMA (WINDOWS/MAC) ===
         if ("Notification" in window && Notification.permission === "default") {
-            Notification.requestPermission().then(permission => {
-                if (permission === "granted") {
-                    console.log("Notificações do sistema ativadas!");
-                }
-            });
+            Notification.requestPermission();
         }
 
         fetchInitialCount();
 
-        const handleNewNotification = () => {
-            setUnreadCount(prev => prev + 1);
-        };
-
-        // Escuta o evento de atualização manual vindo da página de Notificações
-        const handleSyncRequest = () => {
-            fetchInitialCount();
-        };
+        const handleNewNotification = () => setUnreadCount(prev => prev + 1);
+        const handleSyncRequest = () => fetchInitialCount();
 
         window.addEventListener('elolab_nova_notificacao', handleNewNotification);
         window.addEventListener('elolab_notificacoes_atualizar', handleSyncRequest);
@@ -77,7 +69,20 @@ export function Sidebar() {
         return `${baseUrl}${cleanPath}`;
     };
 
-    const menuItems = [
+    // ==========================================================
+    // 1. MENU EXCLUSIVO PARA O SUPER ADMIN (Visão Global)
+    // ==========================================================
+    const adminMenu = [
+        { label: 'Painel Mestre', icon: ShieldAlert, path: '/admin', show: true },
+        // No futuro podemos adicionar: { label: 'Faturação Global', icon: Wallet, path: '/admin/financeiro', show: true },
+        { label: 'Notificações', icon: Bell, path: '/notificacoes', show: true, hasBadge: true },
+        { label: 'Meu Perfil', icon: UserCircle, path: '/perfil', show: true },
+    ];
+
+    // ==========================================================
+    // 2. MENU PADRÃO (Laboratórios e Clínicas comuns)
+    // ==========================================================
+    const normalMenu = [
         { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard', show: userType === 'Laboratorio' },
         { label: 'Minhas Clínicas', icon: Users, path: '/clinicas', show: userType === 'Laboratorio' },
         { label: 'Meus Laboratórios', icon: Building2, path: '/parceiros', show: userType === 'Clinica' },
@@ -89,6 +94,9 @@ export function Sidebar() {
         { label: 'Notificações', icon: Bell, path: '/notificacoes', show: true, hasBadge: true },
         { label: 'Meu Perfil', icon: UserCircle, path: '/perfil', show: true },
     ];
+
+    // O Sistema decide que menu mostrar consoante o poder do utilizador
+    const menuItems = isSuperAdmin ? adminMenu : normalMenu;
 
     function handleLogout() {
         localStorage.clear();

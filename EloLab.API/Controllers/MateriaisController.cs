@@ -3,6 +3,7 @@ using EloLab.API.Models;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
 
 namespace EloLab.API.Controllers;
 
@@ -18,6 +19,13 @@ public class MateriaisController : ControllerBase
         _context = context;
     }
 
+    // Função auxiliar para verificar se é o administrador mestre
+    private bool IsSuperAdmin()
+    {
+        var email = User.FindFirst(ClaimTypes.Email)?.Value;
+        return email != null && email.ToLower() == "matheuspamp4@outlook.com";
+    }
+
     [HttpGet]
     public async Task<ActionResult<IEnumerable<Material>>> GetMateriais()
     {
@@ -29,6 +37,20 @@ public class MateriaisController : ControllerBase
             .Where(m => m.LaboratorioId == labId)
             .OrderBy(m => m.Nome)
             .ToListAsync();
+    }
+
+    // === NOVO ENDPOINT: PERMITE AO ADMIN VER MATERIAIS DE QUALQUER LAB ===
+    [HttpGet("admin/{labId}")]
+    public async Task<IActionResult> GetMateriaisParaAdmin(Guid labId)
+    {
+        if (!IsSuperAdmin()) return Forbid("Apenas o Super Admin pode aceder a esta biblioteca.");
+
+        var materiais = await _context.Materiais
+            .Where(m => m.LaboratorioId == labId)
+            .OrderBy(m => m.Nome)
+            .ToListAsync();
+
+        return Ok(materiais);
     }
 
     [HttpPost]
@@ -53,7 +75,10 @@ public class MateriaisController : ControllerBase
         var material = await _context.Materiais.FindAsync(id);
 
         if (material == null) return NotFound();
-        if (material.LaboratorioId.ToString() != labIdClaim) return Unauthorized();
+
+        // Segurança: Só o dono do material ou o Super Admin podem apagar
+        if (!IsSuperAdmin() && material.LaboratorioId.ToString() != labIdClaim) 
+            return Unauthorized();
 
         _context.Materiais.Remove(material);
         await _context.SaveChangesAsync();

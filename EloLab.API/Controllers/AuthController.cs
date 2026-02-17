@@ -7,10 +7,10 @@ using System.Threading.Tasks;
 using EloLab.API.Data;
 using EloLab.API.DTOs;
 using EloLab.API.Models; 
-using EloLab.API.Hubs; // <--- NOVO IMPORT PARA O SIGNALR
+using EloLab.API.Hubs; 
 using Microsoft.AspNetCore.Authorization; 
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.SignalR; // <--- NOVO IMPORT PARA O SIGNALR
+using Microsoft.AspNetCore.SignalR; 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.IdentityModel.Tokens;
@@ -24,14 +24,14 @@ public class AuthController : ControllerBase
     private readonly Supabase.Client _supabaseClient;
     private readonly AppDbContext _context;
     private readonly IConfiguration _configuration;
-    private readonly IHubContext<AppHub> _hubContext; // <--- INJETÁMOS O MEGAFONE AQUI
+    private readonly IHubContext<AppHub> _hubContext; 
 
     public AuthController(Supabase.Client supabaseClient, AppDbContext context, IConfiguration configuration, IHubContext<AppHub> hubContext)
     {
         _supabaseClient = supabaseClient;
         _context = context;
         _configuration = configuration;
-        _hubContext = hubContext; // <--- GUARDÁMOS O MEGAFONE AQUI
+        _hubContext = hubContext; 
     }
 
     [HttpPost("login")]
@@ -80,7 +80,12 @@ public class AuthController : ControllerBase
                 }
             }
             
-            if (tipo == "Laboratorio" && !isAtivo)
+            // Verifica a autorização de Super Admin 
+            string emailLogado = session.User.Email ?? "";
+            bool isSuperAdmin = emailLogado.ToLower() == "matheuspamp4@outlook.com";
+
+            // Só bloqueia a entrada se NÃO for o super admin e estiver inativo
+            if (tipo == "Laboratorio" && !isAtivo && !isSuperAdmin)
             {
                 return StatusCode(403, new { erro = "PENDENTE", mensagem = "A conta do laboratório está em análise." });
             }
@@ -88,7 +93,7 @@ public class AuthController : ControllerBase
             var claims = new List<Claim>
             {
                 new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
-                new Claim(ClaimTypes.Email, session.User.Email ?? ""),
+                new Claim(ClaimTypes.Email, emailLogado),
                 new Claim("tipo", tipo)
             };
 
@@ -121,12 +126,13 @@ public class AuthController : ControllerBase
             { 
                 token = jwtString,
                 usuarioId = userId,
-                email = session.User.Email,
+                email = emailLogado,
                 tipo = tipo,
                 nome = nome,
                 corPrimaria = cor,
                 logoUrl = logo,
-                ativo = isAtivo
+                ativo = isAtivo,
+                isAdmin = isSuperAdmin // <--- VARIÁVEL MESTRA
             });
         }
         catch (Exception ex)
@@ -201,7 +207,7 @@ public class AuthController : ControllerBase
                 CodigoPostal = request.CodigoPostal,
                 CorPrimaria = "#2563EB", 
                 StatusAssinatura = "Pendente",
-                Ativo = false,
+                Ativo = false, // Conta nasce pendente de aprovação
                 CreatedAt = DateTime.UtcNow
             };
             
@@ -317,14 +323,22 @@ public class AuthController : ControllerBase
             await _context.SaveChangesAsync();
             await transaction.CommitAsync();
 
-            // === A MÁGICA DO SIGNALR AQUI: AVISA O LABORATÓRIO SE HOUVE CONVITE ===
             if (convite != null)
             {
-                await _hubContext.Clients.Group($"Lab_{convite.LaboratorioId}").SendAsync("NovaNotificacao", new {
-                    titulo = "Novo Parceiro Registado!",
-                    mensagem = $"A clínica {novaClinica.Nome} acabou de criar conta e aceitou o seu convite.",
-                    tipo = "convite"
-                });
+                var novaNotificacao = new Notificacao
+                {
+                    Id = Guid.NewGuid(),
+                    UsuarioId = convite.LaboratorioId,
+                    Titulo = "Novo Parceiro Registado!",
+                    Texto = $"A clínica {novaClinica.Nome} acabou de criar conta e aceitou o seu convite.",
+                    Lida = false,
+                    CreatedAt = DateTime.UtcNow
+                    // REMOVIDO: Tipo = "Convite"
+                };
+                _context.Notificacoes.Add(novaNotificacao);
+                await _context.SaveChangesAsync();
+
+                await _hubContext.Clients.Group($"Lab_{convite.LaboratorioId}").SendAsync("NovaNotificacao", novaNotificacao);
             }
 
             return StatusCode(201, new { mensagem = "Clínica registada com sucesso." });
@@ -375,12 +389,20 @@ public class AuthController : ControllerBase
 
         await _context.SaveChangesAsync();
 
-        // === A MÁGICA DO SIGNALR AQUI: AVISA O LABORATÓRIO ===
-        await _hubContext.Clients.Group($"Lab_{convite.LaboratorioId}").SendAsync("NovaNotificacao", new {
-            titulo = "Novo Vínculo!",
-            mensagem = $"A clínica {clinica.Nome} acabou de aceitar o seu convite.",
-            tipo = "convite"
-        });
+        var novaNotificacao = new Notificacao
+        {
+            Id = Guid.NewGuid(),
+            UsuarioId = convite.LaboratorioId,
+            Titulo = "Novo Vínculo!",
+            Texto = $"A clínica {clinica.Nome} acabou de aceitar o seu convite.",
+            Lida = false,
+            CreatedAt = DateTime.UtcNow
+            // REMOVIDO: Tipo = "Convite"
+        };
+        _context.Notificacoes.Add(novaNotificacao);
+        await _context.SaveChangesAsync();
+
+        await _hubContext.Clients.Group($"Lab_{convite.LaboratorioId}").SendAsync("NovaNotificacao", novaNotificacao);
 
         return Ok(new { mensagem = "Vínculo criado com sucesso! Agora você faz parte deste laboratório." });
     }

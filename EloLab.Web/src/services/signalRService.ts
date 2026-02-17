@@ -52,6 +52,9 @@ class SignalRService {
     private registerListeners() {
         if (!this.connection) return;
 
+        // =================================================
+        // OUVINTE 1: NOTIFICAÇÕES GERAIS E AVISOS
+        // =================================================
         this.connection.on("NovaNotificacao", (notificacao) => {
             notify.success(`${notificacao.titulo} \n ${notificacao.texto}`);
 
@@ -77,6 +80,30 @@ class SignalRService {
 
             window.dispatchEvent(new CustomEvent('elolab_nova_notificacao', { detail: notificacao }));
             window.dispatchEvent(new CustomEvent('elolab_notificacoes_atualizar'));
+        });
+
+        // =================================================
+        // OUVINTE 2: COMANDO DE EXPULSÃO (SUPER ADMIN)
+        // =================================================
+        this.connection.on("ForcarLogout", () => {
+            console.warn("Acesso revogado pelo Administrador.");
+            localStorage.clear();
+            window.location.href = '/pendente'; // Redireciona e mata a sessão instantaneamente
+        });
+
+        // =================================================
+        // OUVINTE 3: COMANDO DE ATUALIZAÇÃO VISUAL (SUPER ADMIN)
+        // =================================================
+        this.connection.on("AtualizarAparencia", (dados: any) => {
+            console.log("O Admin mudou a sua cor/logo! Aplicando...");
+            if (dados.corPrimaria) localStorage.setItem('elolab_user_color', dados.corPrimaria);
+            if (dados.logoUrl) {
+                localStorage.setItem('elolab_user_logo', dados.logoUrl);
+            } else {
+                localStorage.removeItem('elolab_user_logo');
+            }
+            // Força um recarregamento da página para injetar a nova cor na interface!
+            window.location.reload();
         });
     }
 

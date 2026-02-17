@@ -18,8 +18,8 @@ export function Login() {
         try {
             const response = await api.post('/Auth/login', { email, password });
 
-            // 1. Extrai os dados da resposta
-            const { token, usuarioId, tipo, nome, corPrimaria, logoUrl } = response.data;
+            // 1. Extrai os dados da resposta (Agora incluímos o isAdmin)
+            const { token, usuarioId, tipo, nome, corPrimaria, logoUrl, isAdmin } = response.data;
 
             // 2. Guarda na memória do navegador
             localStorage.setItem('elolab_token', token);
@@ -27,6 +27,13 @@ export function Login() {
             localStorage.setItem('elolab_user_type', tipo);
             localStorage.setItem('elolab_user_name', nome);
             localStorage.setItem('elolab_user_color', corPrimaria || '#2563EB');
+
+            // Guarda a flag de Admin se ela vier verdadeira
+            if (isAdmin) {
+                localStorage.setItem('elolab_is_admin', 'true');
+            } else {
+                localStorage.removeItem('elolab_is_admin');
+            }
 
             if (logoUrl) {
                 localStorage.setItem('elolab_user_logo', logoUrl);
@@ -37,8 +44,7 @@ export function Login() {
             // 3. Define o Token no Axios para os próximos pedidos
             api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
-            // === NOVIDADE: LIGA O TÚNEL SIGNALR IMEDIATAMENTE APÓS O LOGIN ===
-            // Assim não precisamos de fazer F5 (refresh) para o túnel apanhar o novo token!
+            // Liga o túnel SignalR
             signalRService.startConnection();
 
             // 4. Lógica de Convite da Clínica
@@ -55,7 +61,10 @@ export function Login() {
             }
 
             // 5. Redirecionamento de Sucesso
-            if (tipo === 'Clinica') {
+            // Se for o Super Admin, vai direto para o Painel de Controlo!
+            if (isAdmin) {
+                navigate('/admin');
+            } else if (tipo === 'Clinica') {
                 navigate('/parceiros');
             } else if (tipo === 'Laboratorio') {
                 navigate('/dashboard');
@@ -66,17 +75,13 @@ export function Login() {
             notify.success(`Bem-vindo de volta!`);
 
         } catch (error: any) {
-            // === BLOQUEIO DE SEGURANÇA MÁXIMA PARA PRODUÇÃO ===
-            // Se o Backend mandar o Erro 403 com o texto "PENDENTE", 
-            // significa que o Laboratório não está ativo.
+            // Bloqueio de laboratórios pendentes (O Admin fura este bloqueio no backend)
             if (error.response?.status === 403 && error.response?.data?.erro === 'PENDENTE') {
                 navigate('/pendente');
                 return;
             }
-            // ===================================================
 
             console.error(error);
-            // Mensagem de erro genérica (ou enviada pela API) para outros casos
             notify.error(error.response?.data?.erro || error.response?.data?.mensagem || 'Falha na autenticação. Verifique as suas credenciais.');
         } finally {
             setLoading(false);
@@ -85,31 +90,21 @@ export function Login() {
 
     return (
         <div className="flex min-h-screen bg-slate-50 relative overflow-hidden">
-
-            {/* Textura de fundo do formulário */}
             <div className="absolute inset-0 -z-10 h-full w-full bg-[linear-gradient(to_right,#8080800a_1px,transparent_1px),linear-gradient(to_bottom,#8080800a_1px,transparent_1px)] bg-[size:24px_24px]"></div>
 
-            {/* Left Side - Image/Branding (Hidden on mobile) */}
             <div className="hidden lg:flex lg:w-[45%] relative bg-slate-900 overflow-hidden items-center justify-center p-12">
                 <div className="absolute inset-0 bg-gradient-to-br from-blue-700/30 to-slate-900/80 z-10 mix-blend-multiply" />
-                {/* Padrão abstrato escuro */}
                 <div className="absolute inset-0 bg-[radial-gradient(#ffffff15_1px,transparent_1px)] [background-size:20px_20px] opacity-30 z-0"></div>
                 <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-blue-500/20 blur-[120px] rounded-full z-0"></div>
 
                 <div className="relative z-20 w-full max-w-lg">
-                    {/* Logótipo GIGANTE e centralizado na área esquerda */}
                     <div className="mb-12 flex items-center justify-center w-full">
-                        <img
-                            src="/logo.png"
-                            alt="EloLab Systems"
-                            className="h-36 w-auto object-contain drop-shadow-2xl"
-                        />
+                        <img src="/logo.png" alt="EloLab Systems" className="h-36 w-auto object-contain drop-shadow-2xl" />
                     </div>
 
                     <h2 className="text-4xl font-black text-white mb-6 leading-tight drop-shadow-md">Acesso ao portal de gestão integrada.</h2>
                     <p className="text-lg text-slate-300 font-medium leading-relaxed">Efetue login para gerir os seus pedidos, consultar tabelas de preços e comunicar com os seus parceiros de forma fluida e segura.</p>
 
-                    {/* Cartão UI Falso (Decorativo para preencher espaço) */}
                     <div className="mt-16 w-full max-w-sm rounded-2xl border border-white/10 bg-white/5 p-5 backdrop-blur-md shadow-2xl relative overflow-hidden group">
                         <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent -translate-x-full group-hover:animate-[shimmer_2s_infinite]"></div>
                         <div className="flex items-center justify-between mb-4">
@@ -125,20 +120,13 @@ export function Login() {
                 </div>
             </div>
 
-            {/* Right Side - Form */}
             <div className="flex w-full lg:w-[55%] items-center justify-center p-8 sm:p-12 relative z-10">
-                {/* Mobile Logo Centralizado e Maior */}
                 <div className="absolute top-8 left-0 right-0 lg:hidden flex justify-center w-full">
-                    <img
-                        src="/logo.png"
-                        alt="EloLab Systems"
-                        className="h-16 w-auto object-contain drop-shadow-md"
-                    />
+                    <img src="/logo.png" alt="EloLab Systems" className="h-16 w-auto object-contain drop-shadow-md" />
                 </div>
 
                 <div className="w-full max-w-md animate-in slide-in-from-bottom-8 duration-500 fade-in">
                     <div className="mb-10 bg-white p-8 rounded-[2rem] shadow-2xl shadow-slate-200/50 border border-white relative overflow-hidden">
-                        {/* Brilho sutil no topo do cartão */}
                         <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-400 to-indigo-500"></div>
 
                         <div className="mb-8">
@@ -148,9 +136,7 @@ export function Login() {
 
                         <form onSubmit={handleLogin} className="space-y-6">
                             <div>
-                                <label className="mb-2 block text-sm font-bold text-slate-700">
-                                    Email Corporativo
-                                </label>
+                                <label className="mb-2 block text-sm font-bold text-slate-700">Email Corporativo</label>
                                 <div className="relative group">
                                     <Mail className="absolute top-3.5 left-3.5 h-5 w-5 text-slate-400 transition-colors group-focus-within:text-blue-600" />
                                     <input
@@ -166,12 +152,8 @@ export function Login() {
 
                             <div>
                                 <div className="flex items-center justify-between mb-2">
-                                    <label className="block text-sm font-bold text-slate-700">
-                                        Senha
-                                    </label>
-                                    <Link to="/esqueci-senha" className="text-sm font-bold text-blue-600 hover:text-blue-700 hover:underline">
-                                        Esqueceu a senha?
-                                    </Link>
+                                    <label className="block text-sm font-bold text-slate-700">Senha</label>
+                                    <Link to="/esqueci-senha" className="text-sm font-bold text-blue-600 hover:text-blue-700 hover:underline">Esqueceu a senha?</Link>
                                 </div>
                                 <div className="relative group">
                                     <Lock className="absolute top-3.5 left-3.5 h-5 w-5 text-slate-400 transition-colors group-focus-within:text-blue-600" />
@@ -191,13 +173,7 @@ export function Login() {
                                 disabled={loading}
                                 className="group flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 py-4 text-base font-bold text-white shadow-lg shadow-slate-900/20 transition-all hover:-translate-y-0.5 hover:bg-slate-800 hover:shadow-xl hover:shadow-slate-900/30 disabled:cursor-not-allowed disabled:opacity-70 disabled:hover:translate-y-0"
                             >
-                                {loading ? (
-                                    <Loader2 className="h-5 w-5 animate-spin" />
-                                ) : (
-                                    <>
-                                        Entrar na Plataforma <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
-                                    </>
-                                )}
+                                {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <>Entrar na Plataforma <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" /></>}
                             </button>
                         </form>
                     </div>
@@ -205,9 +181,7 @@ export function Login() {
                     <div className="mt-8 text-center bg-white/60 backdrop-blur-sm py-4 rounded-2xl border border-white shadow-sm">
                         <p className="text-slate-500 font-medium">
                             Ainda não tem conta?{' '}
-                            <Link to="/registro" className="font-bold text-blue-600 hover:text-blue-700 hover:underline transition">
-                                Registe-se agora
-                            </Link>
+                            <Link to="/registro" className="font-bold text-blue-600 hover:text-blue-700 hover:underline transition">Registe-se agora</Link>
                         </p>
                     </div>
                 </div>
