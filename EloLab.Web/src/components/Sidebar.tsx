@@ -28,6 +28,15 @@ export function Sidebar() {
     }
 
     useEffect(() => {
+        // === PEDIR PERMISSÃO PARA NOTIFICAÇÕES DO SISTEMA (WINDOWS/MAC) ===
+        if ("Notification" in window && Notification.permission === "default") {
+            Notification.requestPermission().then(permission => {
+                if (permission === "granted") {
+                    console.log("Notificações do sistema ativadas!");
+                }
+            });
+        }
+
         fetchInitialCount();
 
         const handleNewNotification = () => {
