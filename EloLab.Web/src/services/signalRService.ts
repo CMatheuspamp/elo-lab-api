@@ -1,5 +1,5 @@
 import * as signalR from '@microsoft/signalr';
-import { notify } from '../utils/notify'; // O nosso querido Toaster!
+import { notify } from '../utils/notify';
 
 class SignalRService {
     public connection: signalR.HubConnection | null = null;
@@ -20,19 +20,16 @@ class SignalRService {
                 skipNegotiation: true,
                 transport: signalR.HttpTransportType.WebSockets
             })
-            // === NOVIDADE: CALA OS LOGS DE INFORMAÇÃO DO SIGNALR ===
-            // Oculta o token do console. Só mostra erros críticos (vermelhos).
             .configureLogging(signalR.LogLevel.Error)
             .withAutomaticReconnect()
             .build();
 
         this.connection.start()
             .then(() => {
-                // Mantemos apenas um aviso discreto de que está a funcionar
                 console.log('🟢 Tempo-Real OK');
                 this.registerListeners();
             })
-            .catch(() => { // Correção: removido o 'err' não utilizado
+            .catch(() => {
                 this.retryWithDefault(hubUrl, token);
             });
     }
@@ -40,7 +37,7 @@ class SignalRService {
     private retryWithDefault(hubUrl: string, token: string) {
         this.connection = new signalR.HubConnectionBuilder()
             .withUrl(hubUrl, { accessTokenFactory: () => token })
-            .configureLogging(signalR.LogLevel.Error) // Cala o fallback também
+            .configureLogging(signalR.LogLevel.Error)
             .withAutomaticReconnect()
             .build();
 
@@ -49,35 +46,27 @@ class SignalRService {
                 console.log('🟢 Tempo-Real OK (Fallback)');
                 this.registerListeners();
             })
-            .catch((e) => console.error('🔴 Falha na conexão de Tempo-Real:', e)); // Correção: agora o 'e' é lido e impresso no console
+            .catch((e) => console.error('🔴 Falha na conexão de Tempo-Real:', e));
     }
 
     private registerListeners() {
         if (!this.connection) return;
 
         this.connection.on("NovaNotificacao", (notificacao) => {
-            // 1. O nosso Toaster dentro do site
             notify.success(`${notificacao.titulo} \n ${notificacao.texto}`);
 
-            // 2. Tocar o som de notificação (O ficheiro notificacao.mp3 tem de estar na pasta public)
             try {
                 const audio = new Audio('/notificacao.mp3');
-                // O .catch evita que o console dê erro caso o navegador bloqueie o som 
-                // (alguns navegadores exigem que o utilizador clique no site antes de permitir som)
                 audio.play().catch(() => console.log("Som bloqueado temporariamente pelo navegador."));
             } catch {
-                // Correção: removido o parâmetro 'error' (funcionalidade moderna do JS/TS)
             }
 
-            // 3. Notificação Push do Sistema Operativo (Windows/Mac/Android)
-            // Se já tem permissão, mostra o alerta.
             if (Notification.permission === "granted") {
                 new Notification(notificacao.titulo, {
                     body: notificacao.texto,
-                    icon: '/logo.png' // Mostra a vossa logo no alerta do Windows!
+                    icon: '/logo.png'
                 });
             }
-            // Se ainda não perguntou, pede permissão ao utilizador
             else if (Notification.permission !== "denied") {
                 Notification.requestPermission().then(permission => {
                     if (permission === "granted") {
@@ -86,10 +75,17 @@ class SignalRService {
                 });
             }
 
-            // 4. Atualizar o site
             window.dispatchEvent(new CustomEvent('elolab_nova_notificacao', { detail: notificacao }));
             window.dispatchEvent(new CustomEvent('elolab_notificacoes_atualizar'));
         });
+    }
+
+    // === ESTA É A PARTE QUE FALTAVA PARA O VERCEL PASSAR ===
+    public stopConnection() {
+        if (this.connection) {
+            this.connection.stop();
+            this.connection = null;
+        }
     }
 }
 
