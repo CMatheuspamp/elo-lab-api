@@ -348,4 +348,28 @@ public class TrabalhosController : ControllerBase
 
         return NoContent();
     }
+    
+    // Adicione este método dentro de EloLab.API.Controllers.TrabalhosController
+
+    [HttpPut("{id}")]
+    public async Task<IActionResult> AtualizarTrabalho(Guid id, [FromBody] AtualizarTrabalhoRequest request)
+    {
+        var trabalho = await _context.Trabalhos.FindAsync(id);
+        if (trabalho == null) return NotFound("Trabalho não encontrado.");
+
+        // Validação de segurança: garante que apenas a conta de Lab dona do trabalho pode editá-lo
+        var labIdClaim = User.FindFirst("laboratorioId")?.Value;
+        if (trabalho.LaboratorioId.ToString() != labIdClaim) return Forbid();
+
+        // Atualiza as informações
+        trabalho.PacienteNome = request.PacienteNome;
+        trabalho.Dentes = request.Dentes;
+        trabalho.CorDente = request.CorDente;
+        trabalho.DescricaoPersonalizada = request.DescricaoPersonalizada;
+        trabalho.DataEntregaPrevista = request.DataEntrega.ToUniversalTime();
+        trabalho.ValorFinal = request.ValorFinal;
+
+        await _context.SaveChangesAsync();
+        return Ok(trabalho);
+    }
 }

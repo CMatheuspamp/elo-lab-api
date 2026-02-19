@@ -32,13 +32,15 @@ export function NewJob() {
     const navigate = useNavigate();
     const location = useLocation();
 
-    // Recupera dados passados pela navegação
+    // Recupera dados passados pela navegação (Modo Edição e Modo Pré-Selecionado)
+    const editMode = location.state?.editMode || false;
+    const trabalhoToEdit = location.state?.trabalho || null;
     const preSelectedLabId = location.state?.preSelectedLabId;
     const preSelectedLabColor = location.state?.preSelectedLabColor;
     const preSelectedServiceId = location.state?.preSelectedServiceId;
 
-    const [loading, setLoading] = useState(false); // Estado de loading geral (submit)
-    const [loadingServices, setLoadingServices] = useState(false); // Novo: Loading apenas dos serviços
+    const [loading, setLoading] = useState(false);
+    const [loadingServices, setLoadingServices] = useState(false);
     const [user, setUser] = useState<UserSession | null>(null);
 
     // Cor Dinâmica
@@ -54,13 +56,10 @@ export function NewJob() {
     const [paciente, setPaciente] = useState('');
     const [servicoId, setServicoId] = useState(preSelectedServiceId || '');
 
-    // === NOVOS ESTADOS PARA PESQUISA (AUTOCOMPLETE) ===
     const [buscaParceiro, setBuscaParceiro] = useState('');
     const [mostrarListaParceiros, setMostrarListaParceiros] = useState(false);
-
     const [buscaServico, setBuscaServico] = useState('');
     const [mostrarListaServicos, setMostrarListaServicos] = useState(false);
-    // ==================================================
 
     // Dentes
     const [dentesSelecionados, setDentesSelecionados] = useState<string[]>([]);
@@ -75,30 +74,87 @@ export function NewJob() {
     const [obs, setObs] = useState('');
     const [arquivos, setArquivos] = useState<File[]>([]);
 
-    // Variáveis Auxiliares
     const isLab = user?.tipo === 'Laboratorio';
     const isPreSelectedMode = !!preSelectedLabId && !isLab;
+
+    // === FUNÇÃO PARA TRANSFORMAR STRING DO BANCO EM ARRAY DE DENTES ===
+    function parseDentesDoBanco(dentesStr: string) {
+        if (!dentesStr) return [];
+        if (dentesStr === "Boca Completa") return [...ALL_UPPER, ...ALL_LOWER];
+        if (dentesStr === "Superior") return [...ALL_UPPER];
+        if (dentesStr === "Inferior") return [...ALL_LOWER];
+        if (dentesStr.startsWith("Superior + ")) {
+            const extras = dentesStr.replace("Superior + ", "").split(", ");
+            return [...ALL_UPPER, ...extras];
+        }
+        if (dentesStr.startsWith("Inferior + ")) {
+            const extras = dentesStr.replace("Inferior + ", "").split(", ");
+            return [...ALL_LOWER, ...extras];
+        }
+        return dentesStr.split(", ");
+    }
 
     useEffect(() => {
         carregarDadosIniciais();
     }, []);
 
+    // 0. Se for modo edição, preencher dados
+    useEffect(() => {
+        if (editMode && trabalhoToEdit) {
+            setPaciente(trabalhoToEdit.pacienteNome || '');
+            setCor(trabalhoToEdit.corDente || '');
+            setObs(trabalhoToEdit.descricaoPersonalizada || '');
+
+            // Formatando data para datetime-local (Y-m-dTH:i) na zona horária local
+            if (trabalhoToEdit.dataEntregaPrevista) {
+                const d = new Date(trabalhoToEdit.dataEntregaPrevista);
+                const tzoffset = d.getTimezoneOffset() * 60000;
+                const localISOTime = (new Date(d.getTime() - tzoffset)).toISOString().slice(0, 16);
+                setDataEntrega(localISOTime);
+            }
+
+            // Nomes para exibir nos inputs trancados
+            setParceiroSelecionadoId(trabalhoToEdit.clinicaId);
+            setBuscaParceiro(trabalhoToEdit.clinica?.nome || 'Clínica Parceira');
+            setServicoId(trabalhoToEdit.servicoId || '');
+            setBuscaServico(trabalhoToEdit.servico?.nome || 'Personalizado');
+
+            // Odontograma
+            const dentesParseados = parseDentesDoBanco(trabalhoToEdit.dentes || '');
+            setDentesSelecionados(dentesParseados);
+
+            // Valores (Calcula o unitário a partir do total se possível)
+            setValorTotal(trabalhoToEdit.valorFinal?.toString() || '0');
+
+            let qtd = 1;
+            if (trabalhoToEdit.dentes === 'Boca Completa') qtd = 2;
+            else if (dentesParseados.length > 0 && !trabalhoToEdit.dentes?.includes('Superior') && !trabalhoToEdit.dentes?.includes('Inferior')) {
+                qtd = dentesParseados.length;
+            }
+            if (qtd > 0) {
+                setValorUnitario((trabalhoToEdit.valorFinal / qtd).toString());
+            } else {
+                setValorUnitario(trabalhoToEdit.valorFinal.toString());
+            }
+        }
+    }, [editMode, trabalhoToEdit]);
+
+
     // 1. Sincronizar Nome do Parceiro se já vier selecionado
     useEffect(() => {
-        if (parceiroSelecionadoId && listaParceiros.length > 0) {
+        if (!editMode && parceiroSelecionadoId && listaParceiros.length > 0) {
             const parceiro = listaParceiros.find(p => p.id === parceiroSelecionadoId);
             if (parceiro) {
                 setBuscaParceiro(parceiro.nome);
                 if (parceiro.corPrimaria) setDynamicPrimaryColor(parceiro.corPrimaria);
             }
         }
-    }, [parceiroSelecionadoId, listaParceiros]);
+    }, [parceiroSelecionadoId, listaParceiros, editMode]);
 
-    // 2. LÓGICA DE CARREGAMENTO DE SERVIÇOS (CORRIGIDA E UNIFICADA)
+    // 2. LÓGICA DE CARREGAMENTO DE SERVIÇOS
     useEffect(() => {
-        if (!user) return;
+        if (!user || editMode) return; // Em modo edição não precisamos carregar lista
 
-        // Se não houver parceiro selecionado, limpar a lista (a menos que seja modo pré-selecionado)
         if (!parceiroSelecionadoId) {
             if (!preSelectedServiceId) setListaServicos([]);
             return;
@@ -109,16 +165,13 @@ export function NewJob() {
         let url = '';
 
         if (isLaboratorio) {
-            // CENÁRIO A (Lab): Ver tabela da clínica X (backend usa meu token de lab)
             url = `/Servicos/por-clinica/${parceiroSelecionadoId}`;
         } else if (isClinica) {
-            // CENÁRIO B (Clínica): Ver MINHA tabela com o laboratório Y
             url = `/Servicos/por-clinica/${user.meusDados.id}?laboratorioId=${parceiroSelecionadoId}`;
         }
 
         setLoadingServices(true);
 
-        // Limpa campos dependentes se mudou de parceiro
         if (!preSelectedServiceId && listaServicos.length > 0) {
             setServicoId('');
             setBuscaServico('');
@@ -133,18 +186,18 @@ export function NewJob() {
             })
             .finally(() => setLoadingServices(false));
 
-    }, [parceiroSelecionadoId, user]);
+    }, [parceiroSelecionadoId, user, editMode]);
 
     // 3. Sincronizar Nome do Serviço se já vier selecionado ou mudar
     useEffect(() => {
-        if (servicoId && listaServicos.length > 0) {
+        if (!editMode && servicoId && listaServicos.length > 0) {
             const s = listaServicos.find(item => item.id === servicoId);
             if (s) {
                 setBuscaServico(s.nome);
                 setValorUnitario(s.precoBase.toString());
             }
         }
-    }, [servicoId, listaServicos]);
+    }, [servicoId, listaServicos, editMode]);
 
     // Lógica de Dentes
     useEffect(() => {
@@ -191,10 +244,9 @@ export function NewJob() {
             quantidade = dentesSelecionados.length;
         }
 
-        if (quantidade === 0) {
-            setValorTotal('');
-            return;
-        }
+        // Se o usuário colocou um valor, mas não escolheu dentes, assume como 1 unidade
+        if (quantidade === 0) quantidade = 1;
+
         const total = unitario * quantidade;
         setValorTotal(total.toFixed(2));
     }
@@ -205,28 +257,26 @@ export function NewJob() {
             setUser(resUser.data);
             const isUsuarioLab = resUser.data.tipo === 'Laboratorio';
 
-            // IMPORTANTE: Começa com lista de serviços vazia para AMBOS
-            // A lista só será preenchida quando selecionar o parceiro
             setListaServicos([]);
 
-            if (isUsuarioLab) {
-                const res = await api.get('/Clinicas');
-                setListaParceiros(res.data);
-            } else {
-                const res = await api.get('/Laboratorios');
-                setListaParceiros(res.data);
+            if (!editMode) {
+                if (isUsuarioLab) {
+                    const res = await api.get('/Clinicas');
+                    setListaParceiros(res.data);
+                } else {
+                    const res = await api.get('/Laboratorios');
+                    setListaParceiros(res.data);
+                }
             }
         } catch (error) {
             navigate('/dashboard');
         }
     }
 
-    // === FUNÇÕES DE SELEÇÃO INTELIGENTE ===
     function selecionarParceiro(p: any) {
         setParceiroSelecionadoId(p.id);
         setBuscaParceiro(p.nome);
         setMostrarListaParceiros(false);
-        // Limpa serviço ao mudar parceiro
         setServicoId('');
         setBuscaServico('');
         setValorUnitario('');
@@ -239,7 +289,6 @@ export function NewJob() {
         setMostrarListaServicos(false);
     }
 
-    // Filtros de Pesquisa
     const parceirosFiltrados = listaParceiros.filter(p =>
         p.nome.toLowerCase().includes(buscaParceiro.toLowerCase())
     );
@@ -249,9 +298,7 @@ export function NewJob() {
     );
 
     const handleBack = () => {
-        if (isLab) navigate('/dashboard');
-        else if (preSelectedLabId) navigate(`/portal/${preSelectedLabId}`);
-        else navigate('/parceiros');
+        navigate(-1);
     };
 
     function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
@@ -272,6 +319,7 @@ export function NewJob() {
             prev.includes(dente) ? prev.filter(d => d !== dente) : [...prev, dente].sort()
         );
     };
+
     const selecionarArco = (tipo: 'superior' | 'inferior' | 'limpar') => {
         if (tipo === 'limpar') {
             setDentesSelecionados([]);
@@ -290,7 +338,11 @@ export function NewJob() {
         e.preventDefault();
         if (!user) return;
         setLoading(true);
+
         try {
+            let trabalhoId = '';
+
+            // PAYLOAD PARA CRIAÇÃO E EDIÇÃO
             const payload = {
                 laboratorioId: isLab ? user.meusDados.id : parceiroSelecionadoId,
                 clinicaId: isLab ? parceiroSelecionadoId : user.meusDados.id,
@@ -299,12 +351,24 @@ export function NewJob() {
                 dentes: dentesString,
                 corDente: cor,
                 dataEntrega: new Date(dataEntrega).toISOString(),
-                valorPersonalizado: valorTotal ? parseFloat(valorTotal) : 0,
+                valorPersonalizado: valorTotal ? parseFloat(valorTotal) : 0, // Usado na criação
+                valorFinal: valorTotal ? parseFloat(valorTotal) : 0,         // Usado na edição
                 descricaoPersonalizada: obs
             };
-            const response = await api.post('/Trabalhos', payload);
-            const trabalhoId = response.data.id;
 
+            if (editMode && trabalhoToEdit) {
+                // ROTA PUT PARA ATUALIZAR
+                await api.put(`/Trabalhos/${trabalhoToEdit.id}`, payload);
+                trabalhoId = trabalhoToEdit.id;
+                notify.success('Trabalho editado com sucesso!');
+            } else {
+                // ROTA POST PARA CRIAR NOVO
+                const response = await api.post('/Trabalhos', payload);
+                trabalhoId = response.data.id;
+                notify.success('Pedido criado com sucesso!');
+            }
+
+            // FAZ UPLOAD DE ARQUIVOS ADICIONAIS
             if (arquivos.length > 0 && trabalhoId) {
                 toast.loading("A enviar anexos...", { id: "upload-toast" });
                 for (const arquivo of arquivos) {
@@ -315,9 +379,9 @@ export function NewJob() {
                 toast.dismiss("upload-toast");
             }
 
-            notify.success('Pedido criado com sucesso!');
-
-            if (!isLab && preSelectedLabId) navigate(`/portal/${preSelectedLabId}`);
+            // REDIRECIONA DE VOLTA
+            if (editMode) navigate(-1); // Volta para onde estava
+            else if (!isLab && preSelectedLabId) navigate(`/portal/${preSelectedLabId}`);
             else if (!isLab) navigate('/parceiros');
             else navigate('/dashboard');
 
@@ -346,21 +410,24 @@ export function NewJob() {
 
     return (
         <PageContainer primaryColor={dynamicPrimaryColor}>
-
             <div className="mx-auto max-w-4xl">
                 <div className="mb-6">
                     <button onClick={handleBack} className="flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-slate-800 transition">
-                        <ArrowLeft className="h-4 w-4" /> Cancelar
+                        <ArrowLeft className="h-4 w-4" /> Voltar
                     </button>
                 </div>
 
                 <div className="rounded-2xl border border-slate-200 bg-white p-8 shadow-sm">
                     <div className="mb-8 border-b border-slate-100 pb-6">
-                        <h1 className="text-3xl font-bold text-slate-900">Novo Pedido</h1>
+                        <h1 className="text-3xl font-bold text-slate-900">
+                            {editMode ? 'Editar Trabalho' : 'Novo Pedido'}
+                        </h1>
                         <p className="text-slate-500 mt-1">
-                            {isPreSelectedMode
-                                ? 'A criar pedido para o laboratório parceiro.'
-                                : 'Preencha os dados abaixo para iniciar um novo trabalho.'}
+                            {editMode
+                                ? 'Atualize as informações do trabalho abaixo.'
+                                : isPreSelectedMode
+                                    ? 'A criar pedido para o laboratório parceiro.'
+                                    : 'Preencha os dados abaixo para iniciar um novo trabalho.'}
                         </p>
                     </div>
 
@@ -379,7 +446,7 @@ export function NewJob() {
                                 </div>
                             </div>
 
-                            {/* === SELECTOR DE PARCEIRO COM PESQUISA === */}
+                            {/* === SELECTOR DE PARCEIRO (DESABILITADO EM EDIÇÃO) === */}
                             <div className="md:col-span-2 relative">
                                 <label className="mb-1.5 block text-sm font-bold" style={{ color: dynamicPrimaryColor }}>
                                     {isLab ? "Clínica (Cliente)" : "Laboratório (Parceiro)"}
@@ -394,14 +461,14 @@ export function NewJob() {
                                         onChange={(e) => { setBuscaParceiro(e.target.value); setMostrarListaParceiros(true); setParceiroSelecionadoId(''); }}
                                         onFocus={() => setMostrarListaParceiros(true)}
                                         onBlur={() => setTimeout(() => setMostrarListaParceiros(false), 200)}
-                                        disabled={isPreSelectedMode}
+                                        disabled={isPreSelectedMode || editMode}
                                         placeholder={isLab ? "Digite para buscar a clínica..." : "Digite para buscar o laboratório..."}
                                         className={`w-full rounded-xl border py-3 pl-10 pr-10 text-sm font-bold outline-none transition
-                                            ${isPreSelectedMode ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
+                                            ${(isPreSelectedMode || editMode) ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
                                         style={{ borderColor: `${dynamicPrimaryColor}40`, backgroundColor: `${dynamicPrimaryColor}08`, color: dynamicPrimaryColor }}
                                     />
 
-                                    {!isPreSelectedMode && buscaParceiro && (
+                                    {!isPreSelectedMode && !editMode && buscaParceiro && (
                                         <button
                                             type="button"
                                             onClick={() => { setBuscaParceiro(''); setParceiroSelecionadoId(''); setListaServicos([]); }}
@@ -411,7 +478,7 @@ export function NewJob() {
                                         </button>
                                     )}
 
-                                    {mostrarListaParceiros && !isPreSelectedMode && (
+                                    {mostrarListaParceiros && !isPreSelectedMode && !editMode && (
                                         <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl max-h-60 overflow-y-auto">
                                             {parceirosFiltrados.length === 0 ? (
                                                 <div className="p-4 text-center text-sm text-slate-400">Nenhum encontrado.</div>
@@ -439,7 +506,7 @@ export function NewJob() {
                             </h3>
                             <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
 
-                                {/* === SELECTOR DE SERVIÇO COM PESQUISA === */}
+                                {/* === SELECTOR DE SERVIÇO (DESABILITADO EM EDIÇÃO) === */}
                                 <div className="md:col-span-2 relative">
                                     <label className="mb-1.5 block text-sm font-bold text-slate-700">Serviço</label>
                                     <div className="relative">
@@ -451,16 +518,14 @@ export function NewJob() {
                                             onChange={(e) => { setBuscaServico(e.target.value); setMostrarListaServicos(true); setServicoId(''); }}
                                             onFocus={(e) => { setMostrarListaServicos(true); e.target.style.borderColor = dynamicPrimaryColor; }}
                                             onBlur={(e) => { setTimeout(() => setMostrarListaServicos(false), 200); e.target.style.borderColor = '#e2e8f0'; }}
-                                            disabled={!parceiroSelecionadoId && !isLab}
+                                            disabled={(!parceiroSelecionadoId && !isLab) || editMode}
                                             placeholder={loadingServices ? "A carregar serviços..." : "Digite para buscar o serviço..."}
                                             className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-10 text-sm font-medium outline-none transition disabled:opacity-50"
                                         />
 
-                                        {/* Loading Indicator no Input */}
-                                        {loadingServices && <Loader2 className="absolute right-3 top-3 h-5 w-5 animate-spin text-slate-400" />}
+                                        {loadingServices && !editMode && <Loader2 className="absolute right-3 top-3 h-5 w-5 animate-spin text-slate-400" />}
 
-                                        {/* Dropdown de Serviços */}
-                                        {mostrarListaServicos && (
+                                        {mostrarListaServicos && !editMode && (
                                             <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl max-h-60 overflow-y-auto">
                                                 {servicosFiltrados.length === 0 ? (
                                                     <div className="p-4 text-center text-sm text-slate-400">
@@ -598,7 +663,7 @@ export function NewJob() {
                                     <p className="text-xs text-slate-400 text-right">
                                         {dentesString === 'Superior' || dentesString === 'Inferior'
                                             ? '* Arcada completa conta como 1 unidade.'
-                                            : `* Calculado: ${dentesSelecionados.length > 0 ? dentesSelecionados.length : 0} elemento(s) x Unitário.`}
+                                            : `* Calculado: ${dentesSelecionados.length > 0 ? dentesSelecionados.length : 1} elemento(s) x Unitário.`}
                                     </p>
                                 </div>
                             </div>
@@ -606,7 +671,9 @@ export function NewJob() {
 
                         {/* Upload */}
                         <div>
-                            <label className="mb-2 block text-sm font-bold text-slate-700">Anexos</label>
+                            <label className="mb-2 block text-sm font-bold text-slate-700">
+                                {editMode ? 'Adicionar Novos Anexos' : 'Anexos'}
+                            </label>
                             <div className="group relative flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 transition hover:bg-slate-100"
                                  style={{ borderColor: '#cbd5e1' }}
                                  onMouseEnter={(e) => e.currentTarget.style.borderColor = dynamicPrimaryColor}
@@ -649,7 +716,7 @@ export function NewJob() {
                                     className="flex items-center gap-2 rounded-xl px-8 py-3.5 font-bold text-white shadow-lg transition hover:-translate-y-0.5 disabled:opacity-70"
                                     style={{ backgroundColor: dynamicPrimaryColor, boxShadow: `0 4px 14px ${dynamicPrimaryColor}60` }}
                             >
-                                {loading ? <Loader2 className="animate-spin" /> : <><Save className="h-5 w-5" /> Confirmar Pedido</>}
+                                {loading ? <Loader2 className="animate-spin" /> : <><Save className="h-5 w-5" /> {editMode ? 'Salvar Alterações' : 'Confirmar Pedido'}</>}
                             </button>
                         </div>
                     </form>

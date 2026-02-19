@@ -1,10 +1,10 @@
-import { useEffect, useState, useCallback } from 'react'; // Adicionado useCallback
+import { useEffect, useState, useCallback } from 'react';
 import { api } from '../services/api';
 import { useNavigate, useParams } from 'react-router-dom';
 import { notify } from '../utils/notify';
 import {
     TrendingUp, AlertCircle, Clock, CheckCircle,
-    Filter, Search, Plus, Calendar, ArrowRight, Trash2, ArrowLeft, BookOpen, X, Info, Building2
+    Filter, Search, Plus, Calendar, ArrowRight, Trash2, ArrowLeft, BookOpen, X, Info, Building2, Pencil
 } from 'lucide-react';
 import type { UserSession, Trabalho } from '../types';
 import { PageContainer } from '../components/PageContainer';
@@ -73,7 +73,6 @@ export function Dashboard() {
         return { color: 'bg-slate-100 text-slate-600 border-slate-200', icon: Clock, label: t.status };
     };
 
-    // Transformado em useCallback para poder ser chamado pelo Listener de tempo real
     const loadData = useCallback(async () => {
         try {
             const meResponse = await api.get('/Auth/me');
@@ -115,14 +114,10 @@ export function Dashboard() {
     useEffect(() => {
         loadData();
 
-        // === LÓGICA DE TEMPO REAL (SIGNALR) ===
         const handleRealtimeUpdate = (e: any) => {
             const notificacao = e.detail;
-
-            // Se a notificação for sobre Pedidos ou Status, recarrega a lista
             const t = notificacao.titulo.toLowerCase();
             if (t.includes('pedido') || t.includes('status') || t.includes('trabalho') || t.includes('vínculo')) {
-                console.log("🔄 Atualizando Dashboard em tempo real...");
                 loadData();
             }
         };
@@ -142,6 +137,17 @@ export function Dashboard() {
         } finally {
             setTrabalhoParaExcluir(null);
         }
+    }
+
+    // --- NOVA FUNÇÃO DE NAVEGAR PARA A PÁGINA DE EDIÇÃO ---
+    function irParaEdicao(trabalho: Trabalho) {
+        navigate('/trabalhos/novo', {
+            state: {
+                editMode: true,
+                trabalho,
+                preSelectedLabColor: primaryColor
+            }
+        });
     }
 
     function limparFiltros() {
@@ -185,9 +191,6 @@ export function Dashboard() {
 
     return (
         <PageContainer primaryColor={primaryColor}>
-            {/* ... restante do JSX (Modals, Header, Cards, Tabela) mantido exatamente igual ... */}
-            {/* Omitido aqui para brevidade, mas deve ser mantido no seu arquivo */}
-
             {/* === MODAL EXCLUSÃO === */}
             {trabalhoParaExcluir && (
                 <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
@@ -476,7 +479,14 @@ export function Dashboard() {
                                     <td className="px-6 py-4 text-right">
                                         <div className="flex items-center justify-end gap-3 opacity-0 group-hover:opacity-100 transition-opacity">
                                             {!isClinica && (
-                                                <button onClick={(e) => { e.stopPropagation(); setTrabalhoParaExcluir(trabalho.id); }} className="rounded-lg p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 transition"><Trash2 className="h-4 w-4" /></button>
+                                                <>
+                                                    <button onClick={(e) => { e.stopPropagation(); irParaEdicao(trabalho); }} className="rounded-lg p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 transition" title="Editar Trabalho">
+                                                        <Pencil className="h-4 w-4" />
+                                                    </button>
+                                                    <button onClick={(e) => { e.stopPropagation(); setTrabalhoParaExcluir(trabalho.id); }} className="rounded-lg p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 transition" title="Excluir Trabalho">
+                                                        <Trash2 className="h-4 w-4" />
+                                                    </button>
+                                                </>
                                             )}
                                             <div className="rounded-lg p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition">
                                                 <ArrowRight className="h-4 w-4" />
