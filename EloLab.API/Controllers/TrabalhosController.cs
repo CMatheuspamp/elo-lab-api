@@ -361,7 +361,11 @@ public class TrabalhosController : ControllerBase
         var labIdClaim = User.FindFirst("laboratorioId")?.Value;
         if (trabalho.LaboratorioId.ToString() != labIdClaim) return Forbid();
 
-        // Atualiza as informações
+        // Atualiza as chaves estrangeiras (Destrancadas no Frontend)
+        trabalho.ClinicaId = request.ClinicaId;
+        trabalho.ServicoId = request.ServicoId;
+
+        // Atualiza as informações de texto, datas e valores
         trabalho.PacienteNome = request.PacienteNome;
         trabalho.Dentes = request.Dentes;
         trabalho.CorDente = request.CorDente;

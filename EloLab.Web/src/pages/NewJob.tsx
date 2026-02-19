@@ -32,7 +32,7 @@ export function NewJob() {
     const navigate = useNavigate();
     const location = useLocation();
 
-    // Recupera dados passados pela navegação (Modo Edição e Modo Pré-Selecionado)
+    // Recupera dados passados pela navegação
     const editMode = location.state?.editMode || false;
     const trabalhoToEdit = location.state?.trabalho || null;
     const preSelectedLabId = location.state?.preSelectedLabId;
@@ -77,7 +77,6 @@ export function NewJob() {
     const isLab = user?.tipo === 'Laboratorio';
     const isPreSelectedMode = !!preSelectedLabId && !isLab;
 
-    // === FUNÇÃO PARA TRANSFORMAR STRING DO BANCO EM ARRAY DE DENTES ===
     function parseDentesDoBanco(dentesStr: string) {
         if (!dentesStr) return [];
         if (dentesStr === "Boca Completa") return [...ALL_UPPER, ...ALL_LOWER];
@@ -105,7 +104,6 @@ export function NewJob() {
             setCor(trabalhoToEdit.corDente || '');
             setObs(trabalhoToEdit.descricaoPersonalizada || '');
 
-            // Formatando data para datetime-local (Y-m-dTH:i) na zona horária local
             if (trabalhoToEdit.dataEntregaPrevista) {
                 const d = new Date(trabalhoToEdit.dataEntregaPrevista);
                 const tzoffset = d.getTimezoneOffset() * 60000;
@@ -113,17 +111,14 @@ export function NewJob() {
                 setDataEntrega(localISOTime);
             }
 
-            // Nomes para exibir nos inputs trancados
             setParceiroSelecionadoId(trabalhoToEdit.clinicaId);
             setBuscaParceiro(trabalhoToEdit.clinica?.nome || 'Clínica Parceira');
             setServicoId(trabalhoToEdit.servicoId || '');
             setBuscaServico(trabalhoToEdit.servico?.nome || 'Personalizado');
 
-            // Odontograma
             const dentesParseados = parseDentesDoBanco(trabalhoToEdit.dentes || '');
             setDentesSelecionados(dentesParseados);
 
-            // Valores (Calcula o unitário a partir do total se possível)
             setValorTotal(trabalhoToEdit.valorFinal?.toString() || '0');
 
             let qtd = 1;
@@ -139,21 +134,20 @@ export function NewJob() {
         }
     }, [editMode, trabalhoToEdit]);
 
-
-    // 1. Sincronizar Nome do Parceiro se já vier selecionado
+    // 1. Sincronizar Nome do Parceiro
     useEffect(() => {
-        if (!editMode && parceiroSelecionadoId && listaParceiros.length > 0) {
+        if (parceiroSelecionadoId && listaParceiros.length > 0) {
             const parceiro = listaParceiros.find(p => p.id === parceiroSelecionadoId);
             if (parceiro) {
                 setBuscaParceiro(parceiro.nome);
                 if (parceiro.corPrimaria) setDynamicPrimaryColor(parceiro.corPrimaria);
             }
         }
-    }, [parceiroSelecionadoId, listaParceiros, editMode]);
+    }, [parceiroSelecionadoId, listaParceiros]);
 
-    // 2. LÓGICA DE CARREGAMENTO DE SERVIÇOS
+    // 2. Carregar Lista de Serviços (Agora carrega também na edição para permitir troca)
     useEffect(() => {
-        if (!user || editMode) return; // Em modo edição não precisamos carregar lista
+        if (!user) return;
 
         if (!parceiroSelecionadoId) {
             if (!preSelectedServiceId) setListaServicos([]);
@@ -164,19 +158,10 @@ export function NewJob() {
         const isLaboratorio = user.tipo === 'Laboratorio';
         let url = '';
 
-        if (isLaboratorio) {
-            url = `/Servicos/por-clinica/${parceiroSelecionadoId}`;
-        } else if (isClinica) {
-            url = `/Servicos/por-clinica/${user.meusDados.id}?laboratorioId=${parceiroSelecionadoId}`;
-        }
+        if (isLaboratorio) url = `/Servicos/por-clinica/${parceiroSelecionadoId}`;
+        else if (isClinica) url = `/Servicos/por-clinica/${user.meusDados.id}?laboratorioId=${parceiroSelecionadoId}`;
 
         setLoadingServices(true);
-
-        if (!preSelectedServiceId && listaServicos.length > 0) {
-            setServicoId('');
-            setBuscaServico('');
-            setValorUnitario('');
-        }
 
         api.get(url)
             .then(res => setListaServicos(res.data))
@@ -186,18 +171,17 @@ export function NewJob() {
             })
             .finally(() => setLoadingServices(false));
 
-    }, [parceiroSelecionadoId, user, editMode]);
+    }, [parceiroSelecionadoId, user]);
 
-    // 3. Sincronizar Nome do Serviço se já vier selecionado ou mudar
+    // 3. Sincronizar Nome do Serviço (Apenas o nome para não apagar valor personalizado na edição)
     useEffect(() => {
-        if (!editMode && servicoId && listaServicos.length > 0) {
+        if (servicoId && listaServicos.length > 0) {
             const s = listaServicos.find(item => item.id === servicoId);
             if (s) {
                 setBuscaServico(s.nome);
-                setValorUnitario(s.precoBase.toString());
             }
         }
-    }, [servicoId, listaServicos, editMode]);
+    }, [servicoId, listaServicos]);
 
     // Lógica de Dentes
     useEffect(() => {
@@ -236,15 +220,10 @@ export function NewJob() {
         if (isNaN(unitario)) return;
 
         let quantidade = 0;
-        if (dentesString === 'Superior' || dentesString === 'Inferior') {
-            quantidade = 1;
-        } else if (dentesString === 'Boca Completa') {
-            quantidade = 2;
-        } else {
-            quantidade = dentesSelecionados.length;
-        }
+        if (dentesString === 'Superior' || dentesString === 'Inferior') quantidade = 1;
+        else if (dentesString === 'Boca Completa') quantidade = 2;
+        else quantidade = dentesSelecionados.length;
 
-        // Se o usuário colocou um valor, mas não escolheu dentes, assume como 1 unidade
         if (quantidade === 0) quantidade = 1;
 
         const total = unitario * quantidade;
@@ -259,14 +238,12 @@ export function NewJob() {
 
             setListaServicos([]);
 
-            if (!editMode) {
-                if (isUsuarioLab) {
-                    const res = await api.get('/Clinicas');
-                    setListaParceiros(res.data);
-                } else {
-                    const res = await api.get('/Laboratorios');
-                    setListaParceiros(res.data);
-                }
+            if (isUsuarioLab) {
+                const res = await api.get('/Clinicas');
+                setListaParceiros(res.data);
+            } else {
+                const res = await api.get('/Laboratorios');
+                setListaParceiros(res.data);
             }
         } catch (error) {
             navigate('/dashboard');
@@ -285,7 +262,7 @@ export function NewJob() {
     function selecionarServico(s: any) {
         setServicoId(s.id);
         setBuscaServico(s.nome);
-        setValorUnitario(s.precoBase.toString());
+        setValorUnitario(s.precoBase.toString()); // AQUI é onde o valor é puxado ao trocar de serviço
         setMostrarListaServicos(false);
     }
 
@@ -297,9 +274,7 @@ export function NewJob() {
         (s.material && s.material.toLowerCase().includes(buscaServico.toLowerCase()))
     );
 
-    const handleBack = () => {
-        navigate(-1);
-    };
+    const handleBack = () => navigate(-1);
 
     function handleFileSelect(e: React.ChangeEvent<HTMLInputElement>) {
         if (e.target.files) setArquivos(prev => [...prev, ...Array.from(e.target.files!)]);
@@ -342,7 +317,6 @@ export function NewJob() {
         try {
             let trabalhoId = '';
 
-            // PAYLOAD PARA CRIAÇÃO E EDIÇÃO
             const payload = {
                 laboratorioId: isLab ? user.meusDados.id : parceiroSelecionadoId,
                 clinicaId: isLab ? parceiroSelecionadoId : user.meusDados.id,
@@ -351,24 +325,21 @@ export function NewJob() {
                 dentes: dentesString,
                 corDente: cor,
                 dataEntrega: new Date(dataEntrega).toISOString(),
-                valorPersonalizado: valorTotal ? parseFloat(valorTotal) : 0, // Usado na criação
-                valorFinal: valorTotal ? parseFloat(valorTotal) : 0,         // Usado na edição
+                valorPersonalizado: valorTotal ? parseFloat(valorTotal) : 0,
+                valorFinal: valorTotal ? parseFloat(valorTotal) : 0,
                 descricaoPersonalizada: obs
             };
 
             if (editMode && trabalhoToEdit) {
-                // ROTA PUT PARA ATUALIZAR
                 await api.put(`/Trabalhos/${trabalhoToEdit.id}`, payload);
                 trabalhoId = trabalhoToEdit.id;
-                notify.success('Trabalho editado com sucesso!');
+                notify.success('Trabalho atualizado com sucesso!');
             } else {
-                // ROTA POST PARA CRIAR NOVO
                 const response = await api.post('/Trabalhos', payload);
                 trabalhoId = response.data.id;
                 notify.success('Pedido criado com sucesso!');
             }
 
-            // FAZ UPLOAD DE ARQUIVOS ADICIONAIS
             if (arquivos.length > 0 && trabalhoId) {
                 toast.loading("A enviar anexos...", { id: "upload-toast" });
                 for (const arquivo of arquivos) {
@@ -379,8 +350,7 @@ export function NewJob() {
                 toast.dismiss("upload-toast");
             }
 
-            // REDIRECIONA DE VOLTA
-            if (editMode) navigate(-1); // Volta para onde estava
+            if (editMode) navigate(-1);
             else if (!isLab && preSelectedLabId) navigate(`/portal/${preSelectedLabId}`);
             else if (!isLab) navigate('/parceiros');
             else navigate('/dashboard');
@@ -424,7 +394,7 @@ export function NewJob() {
                         </h1>
                         <p className="text-slate-500 mt-1">
                             {editMode
-                                ? 'Atualize as informações do trabalho abaixo.'
+                                ? 'Atualize qualquer informação do trabalho abaixo.'
                                 : isPreSelectedMode
                                     ? 'A criar pedido para o laboratório parceiro.'
                                     : 'Preencha os dados abaixo para iniciar um novo trabalho.'}
@@ -432,7 +402,6 @@ export function NewJob() {
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-8">
-                        {/* 1. DADOS INICIAIS (PACIENTE E PARCEIRO) */}
                         <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                             <div className="md:col-span-2">
                                 <label className="mb-1.5 block text-sm font-bold text-slate-700">Nome do Paciente</label>
@@ -446,14 +415,12 @@ export function NewJob() {
                                 </div>
                             </div>
 
-                            {/* === SELECTOR DE PARCEIRO (DESABILITADO EM EDIÇÃO) === */}
                             <div className="md:col-span-2 relative">
                                 <label className="mb-1.5 block text-sm font-bold" style={{ color: dynamicPrimaryColor }}>
                                     {isLab ? "Clínica (Cliente)" : "Laboratório (Parceiro)"}
                                 </label>
                                 <div className="relative">
                                     <Building2 className="absolute top-3 left-3 h-5 w-5" style={{ color: dynamicPrimaryColor }} />
-
                                     <input
                                         type="text"
                                         required
@@ -461,34 +428,26 @@ export function NewJob() {
                                         onChange={(e) => { setBuscaParceiro(e.target.value); setMostrarListaParceiros(true); setParceiroSelecionadoId(''); }}
                                         onFocus={() => setMostrarListaParceiros(true)}
                                         onBlur={() => setTimeout(() => setMostrarListaParceiros(false), 200)}
-                                        disabled={isPreSelectedMode || editMode}
+                                        disabled={isPreSelectedMode}
                                         placeholder={isLab ? "Digite para buscar a clínica..." : "Digite para buscar o laboratório..."}
                                         className={`w-full rounded-xl border py-3 pl-10 pr-10 text-sm font-bold outline-none transition
-                                            ${(isPreSelectedMode || editMode) ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
+                                            ${(isPreSelectedMode) ? 'opacity-70 cursor-not-allowed' : 'cursor-pointer'}`}
                                         style={{ borderColor: `${dynamicPrimaryColor}40`, backgroundColor: `${dynamicPrimaryColor}08`, color: dynamicPrimaryColor }}
                                     />
 
-                                    {!isPreSelectedMode && !editMode && buscaParceiro && (
-                                        <button
-                                            type="button"
-                                            onClick={() => { setBuscaParceiro(''); setParceiroSelecionadoId(''); setListaServicos([]); }}
-                                            className="absolute right-3 top-3 text-slate-400 hover:text-slate-600"
-                                        >
+                                    {!isPreSelectedMode && buscaParceiro && (
+                                        <button type="button" onClick={() => { setBuscaParceiro(''); setParceiroSelecionadoId(''); setListaServicos([]); }} className="absolute right-3 top-3 text-slate-400 hover:text-slate-600">
                                             <X className="h-4 w-4" />
                                         </button>
                                     )}
 
-                                    {mostrarListaParceiros && !isPreSelectedMode && !editMode && (
+                                    {mostrarListaParceiros && !isPreSelectedMode && (
                                         <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl max-h-60 overflow-y-auto">
                                             {parceirosFiltrados.length === 0 ? (
                                                 <div className="p-4 text-center text-sm text-slate-400">Nenhum encontrado.</div>
                                             ) : (
                                                 parceirosFiltrados.map(p => (
-                                                    <div
-                                                        key={p.id}
-                                                        onClick={() => selecionarParceiro(p)}
-                                                        className="cursor-pointer px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition border-b border-slate-50 last:border-0 font-medium"
-                                                    >
+                                                    <div key={p.id} onClick={() => selecionarParceiro(p)} className="cursor-pointer px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 transition border-b border-slate-50 last:border-0 font-medium">
                                                         {p.nome}
                                                     </div>
                                                 ))
@@ -499,33 +458,30 @@ export function NewJob() {
                             </div>
                         </div>
 
-                        {/* 2. Ficha Técnica */}
                         <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-6">
                             <h3 className="mb-5 flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-400">
                                 <FileText className="h-4 w-4"/> Ficha Técnica
                             </h3>
                             <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
 
-                                {/* === SELECTOR DE SERVIÇO (DESABILITADO EM EDIÇÃO) === */}
                                 <div className="md:col-span-2 relative">
                                     <label className="mb-1.5 block text-sm font-bold text-slate-700">Serviço</label>
                                     <div className="relative">
                                         <Search className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
-
                                         <input
                                             type="text"
                                             value={buscaServico}
                                             onChange={(e) => { setBuscaServico(e.target.value); setMostrarListaServicos(true); setServicoId(''); }}
                                             onFocus={(e) => { setMostrarListaServicos(true); e.target.style.borderColor = dynamicPrimaryColor; }}
                                             onBlur={(e) => { setTimeout(() => setMostrarListaServicos(false), 200); e.target.style.borderColor = '#e2e8f0'; }}
-                                            disabled={(!parceiroSelecionadoId && !isLab) || editMode}
+                                            disabled={(!parceiroSelecionadoId && !isLab)}
                                             placeholder={loadingServices ? "A carregar serviços..." : "Digite para buscar o serviço..."}
                                             className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-10 text-sm font-medium outline-none transition disabled:opacity-50"
                                         />
 
-                                        {loadingServices && !editMode && <Loader2 className="absolute right-3 top-3 h-5 w-5 animate-spin text-slate-400" />}
+                                        {loadingServices && <Loader2 className="absolute right-3 top-3 h-5 w-5 animate-spin text-slate-400" />}
 
-                                        {mostrarListaServicos && !editMode && (
+                                        {mostrarListaServicos && (
                                             <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl max-h-60 overflow-y-auto">
                                                 {servicosFiltrados.length === 0 ? (
                                                     <div className="p-4 text-center text-sm text-slate-400">
@@ -533,16 +489,10 @@ export function NewJob() {
                                                     </div>
                                                 ) : (
                                                     servicosFiltrados.map(s => (
-                                                        <div
-                                                            key={s.id}
-                                                            onClick={() => selecionarServico(s)}
-                                                            className="cursor-pointer px-4 py-3 hover:bg-slate-50 transition border-b border-slate-50 last:border-0"
-                                                        >
+                                                        <div key={s.id} onClick={() => selecionarServico(s)} className="cursor-pointer px-4 py-3 hover:bg-slate-50 transition border-b border-slate-50 last:border-0">
                                                             <div className="flex justify-between items-center">
                                                                 <span className="font-bold text-sm text-slate-700">{s.nome}</span>
-                                                                <span
-                                                                    className={`text-xs font-bold px-2 py-1 rounded ${s.isTabela ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-900'}`}
-                                                                >
+                                                                <span className={`text-xs font-bold px-2 py-1 rounded ${s.isTabela ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-900'}`}>
                                                                     {new Intl.NumberFormat('pt-PT', { style: 'currency', currency: 'EUR' }).format(s.precoBase)}
                                                                 </span>
                                                             </div>
@@ -555,7 +505,6 @@ export function NewJob() {
                                     </div>
                                 </div>
 
-                                {/* ODONTOGRAMA */}
                                 <div className="md:col-span-2">
                                     <div className="flex items-center justify-between mb-3">
                                         <label className="block text-sm font-bold text-slate-700">Seleção de Dentes</label>
@@ -581,17 +530,10 @@ export function NewJob() {
 
                                     <div className="relative mt-4">
                                         <Smile className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
-                                        <input
-                                            type="text"
-                                            value={dentesString}
-                                            readOnly
-                                            className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition placeholder:font-normal text-slate-500 cursor-not-allowed"
-                                            placeholder="Selecione os dentes acima..."
-                                        />
+                                        <input type="text" value={dentesString} readOnly className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition placeholder:font-normal text-slate-500 cursor-not-allowed" placeholder="Selecione os dentes acima..." />
                                     </div>
                                 </div>
 
-                                {/* SELETOR DE COR */}
                                 <div className="md:col-span-2">
                                     <label className="mb-2 block text-sm font-bold text-slate-700">Selecione a Cor</label>
                                     <div className="mb-4 space-y-3 rounded-xl border border-slate-200 bg-white p-4">
@@ -600,13 +542,7 @@ export function NewJob() {
                                                 <span className="w-32 text-xs font-bold uppercase text-slate-400">{group.group}</span>
                                                 <div className="flex flex-wrap gap-2">
                                                     {group.colors.map((shade) => (
-                                                        <button
-                                                            key={shade}
-                                                            type="button"
-                                                            onClick={() => setCor(shade)}
-                                                            className={`flex h-8 w-10 items-center justify-center rounded-lg text-sm font-bold transition border ${cor === shade ? 'text-white shadow-md transform scale-105' : 'bg-slate-50 text-slate-600 border-slate-200'}`}
-                                                            style={cor === shade ? { backgroundColor: dynamicPrimaryColor, borderColor: dynamicPrimaryColor } : {}}
-                                                        >
+                                                        <button key={shade} type="button" onClick={() => setCor(shade)} className={`flex h-8 w-10 items-center justify-center rounded-lg text-sm font-bold transition border ${cor === shade ? 'text-white shadow-md transform scale-105' : 'bg-slate-50 text-slate-600 border-slate-200'}`} style={cor === shade ? { backgroundColor: dynamicPrimaryColor, borderColor: dynamicPrimaryColor } : {}}>
                                                             {shade}
                                                         </button>
                                                     ))}
@@ -620,7 +556,6 @@ export function NewJob() {
                                     </div>
                                 </div>
 
-                                {/* LINHA UNIFICADA: Data | Unitário | Total */}
                                 <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-6">
                                     <div>
                                         <label className="mb-1.5 block text-sm font-bold text-slate-700">Data de Entrega</label>
@@ -633,29 +568,14 @@ export function NewJob() {
                                         <label className="mb-1.5 block text-sm font-bold text-slate-700">Valor Unitário (€)</label>
                                         <div className="relative">
                                             <Euro className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
-                                            <input
-                                                type="number"
-                                                step="0.01"
-                                                value={valorUnitario}
-                                                onChange={e => setValorUnitario(e.target.value)}
-                                                className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition"
-                                                onFocus={(e) => e.target.style.borderColor = dynamicPrimaryColor}
-                                                onBlur={(e) => e.target.style.borderColor = '#e2e8f0'}
-                                                placeholder="0.00"
-                                            />
+                                            <input type="number" step="0.01" value={valorUnitario} onChange={e => setValorUnitario(e.target.value)} className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-10 pr-4 font-medium outline-none transition" onFocus={(e) => e.target.style.borderColor = dynamicPrimaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} placeholder="0.00" />
                                         </div>
                                     </div>
                                     <div>
                                         <label className="mb-1.5 block text-sm font-bold text-slate-700">Valor Total (€)</label>
                                         <div className="relative">
                                             <Calculator className="absolute top-3 left-3 h-5 w-5 text-slate-400" />
-                                            <input
-                                                type="number"
-                                                value={valorTotal}
-                                                readOnly
-                                                className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 font-bold text-slate-900 outline-none transition cursor-not-allowed"
-                                                placeholder="0.00"
-                                            />
+                                            <input type="number" value={valorTotal} readOnly className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 font-bold text-slate-900 outline-none transition cursor-not-allowed" placeholder="0.00" />
                                         </div>
                                     </div>
                                 </div>
@@ -669,16 +589,11 @@ export function NewJob() {
                             </div>
                         </div>
 
-                        {/* Upload */}
                         <div>
                             <label className="mb-2 block text-sm font-bold text-slate-700">
                                 {editMode ? 'Adicionar Novos Anexos' : 'Anexos'}
                             </label>
-                            <div className="group relative flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 transition hover:bg-slate-100"
-                                 style={{ borderColor: '#cbd5e1' }}
-                                 onMouseEnter={(e) => e.currentTarget.style.borderColor = dynamicPrimaryColor}
-                                 onMouseLeave={(e) => e.currentTarget.style.borderColor = '#cbd5e1'}
-                            >
+                            <div className="group relative flex h-32 w-full cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 transition hover:bg-slate-100" style={{ borderColor: '#cbd5e1' }} onMouseEnter={(e) => e.currentTarget.style.borderColor = dynamicPrimaryColor} onMouseLeave={(e) => e.currentTarget.style.borderColor = '#cbd5e1'}>
                                 <div className="flex flex-col items-center text-slate-400 group-hover:text-slate-600 transition">
                                     <UploadCloud className="mb-2 h-10 w-10" style={{ color: dynamicPrimaryColor }} />
                                     <span className="text-sm font-bold">Clique ou arraste arquivos aqui</span>
@@ -705,7 +620,6 @@ export function NewJob() {
                             )}
                         </div>
 
-                        {/* Obs */}
                         <div>
                             <label className="mb-1.5 block text-sm font-bold text-slate-700">Observações</label>
                             <textarea rows={3} value={obs} onChange={e => setObs(e.target.value)} className="w-full rounded-xl border border-slate-200 py-3 px-4 text-sm font-medium outline-none transition" onFocus={(e) => e.target.style.borderColor = dynamicPrimaryColor} onBlur={(e) => e.target.style.borderColor = '#e2e8f0'} placeholder="Instruções específicas..." />
